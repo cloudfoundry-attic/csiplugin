@@ -4,42 +4,31 @@ import (
 	"code.cloudfoundry.org/lager"
 	"code.cloudfoundry.org/volman"
 	"github.com/paulcwarren/spec"
+	"reflect"
 )
 
 type nodeWrapper struct {
 	Impl interface{}
+	Spec volman.PluginSpec
 }
 
 func (dw *nodeWrapper) GetImplementation() interface{} {
 	return dw.Impl
 }
 
-func (dw *nodeWrapper) Matches(logger lager.Logger, pluginSpec volman.PluginSpec) bool {
+func (dw *nodeWrapper) Matches(logger lager.Logger, otherSpec volman.PluginSpec) bool {
 	logger = logger.Session("matches")
 	logger.Info("start")
 	defer logger.Info("end")
 
-	var matches bool
-	//matchableDriver, ok := dw.Driver.(MatchableDriver)
-	//logger.Info("matches", lager.Data{"is-matchable": ok})
-	//if ok {
-	//	var tlsConfig *TLSConfig
-	//	if pluginSpec.TLSConfig != nil {
-	//		tlsConfig = &TLSConfig{
-	//			InsecureSkipVerify: pluginSpec.TLSConfig.InsecureSkipVerify,
-	//			CAFile: pluginSpec.TLSConfig.CAFile,
-	//			CertFile: pluginSpec.TLSConfig.CertFile,
-	//			KeyFile: pluginSpec.TLSConfig.KeyFile,
-	//		}
-	//	}
-	//	matches = matchableDriver.Matches(logger, pluginSpec.Address, tlsConfig)
-	//}
+	matches := reflect.DeepEqual(dw.Spec, otherSpec)
 	logger.Info("matches", lager.Data{"matches": matches})
 	return matches
 }
 
-func NewCsiPlugin(plugin csi.NodeClient) volman.Plugin {
+func NewCsiPlugin(plugin csi.NodeClient, pluginSpec volman.PluginSpec) volman.Plugin {
 	return &nodeWrapper{
 		Impl: plugin,
+		Spec: pluginSpec,
 	}
 }
