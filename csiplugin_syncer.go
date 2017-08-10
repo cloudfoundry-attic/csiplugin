@@ -6,7 +6,6 @@ import (
 	"code.cloudfoundry.org/goshims/grpcshim"
 	"code.cloudfoundry.org/lager"
 	"code.cloudfoundry.org/volman"
-	"fmt"
 	"github.com/paulcwarren/spec"
 	"github.com/paulcwarren/spec/csishim"
 	"github.com/tedsuo/ifrit"
