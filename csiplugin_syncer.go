@@ -131,7 +131,6 @@ func (p *csiPluginSyncer) Discover(logger lager.Logger) error {
 
 				// instantiate a volman.Plugin implementation of a csi.NodePlugin
 				conn, err := p.grpcShim.Dial(csiPluginSpec.Address, grpc.WithInsecure())
-
 				if err != nil {
 					logger.Error("grpc-dial", err, lager.Data{"address": csiPluginSpec.Address})
 					return err
