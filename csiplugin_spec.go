@@ -53,7 +53,7 @@ func ReadSpec(logger lager.Logger, specFile string) (*CsiPluginSpec, error) {
 
 	if strings.Contains(specFile, ".") {
 		index := strings.LastIndex(specFile, ".")
-		extension := specFile[index+1:len(specFile)]
+		extension := specFile[index+1 : len(specFile)]
 		switch extension {
 		case "json":
 			// extract url from json file
