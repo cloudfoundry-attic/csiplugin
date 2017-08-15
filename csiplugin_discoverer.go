@@ -46,8 +46,16 @@ func NewCsiPluginDiscovererWithShims(logger lager.Logger, pluginRegistry volman.
 func (p *csiPluginDiscoverer) Discover(logger lager.Logger) (map[string]volman.Plugin, error) {
 	logger = logger.Session("discover")
 	logger.Debug("start")
-	logger.Info("discovering-csi-plugins", lager.Data{"plugin-paths": p.pluginPaths})
 	defer logger.Debug("end")
+	var conns []grpcshim.ClientConn
+	defer func() {
+		for _, conn := range conns {
+			err := conn.Close()
+			if err != nil {
+				logger.Error("grpc-conn-close", err)
+			}
+		}
+	}()
 
 	plugins := map[string]volman.Plugin{}
 
@@ -75,9 +83,10 @@ func (p *csiPluginDiscoverer) Discover(logger lager.Logger) (map[string]volman.P
 
 				// instantiate a volman.Plugin implementation of a csi.NodePlugin
 				conn, err := p.grpcShim.Dial(csiPluginSpec.Address, grpc.WithInsecure())
+				conns = append(conns, conn)
 				if err != nil {
 					logger.Error("grpc-dial", err, lager.Data{"address": csiPluginSpec.Address})
-					return plugins, err
+					continue
 				}
 
 				nodePlugin := p.csiShim.NewNodeClient(conn)
@@ -100,8 +109,6 @@ func (p *csiPluginDiscoverer) Discover(logger lager.Logger) (map[string]volman.P
 				plugins[csiPluginSpec.Name] = existingPlugin
 			}
 		}
-
-		logger.Info("csi-discover-start")
 	}
 	return plugins, nil
 }

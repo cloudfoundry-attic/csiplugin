@@ -87,7 +87,12 @@ var _ = Describe("CSIPluginDiscoverer", func() {
 				})
 
 				Context("given the node is available", func() {
+					var (
+						conn *grpc_fake.FakeClientConn
+					)
 					BeforeEach(func() {
+						conn = new(grpc_fake.FakeClientConn)
+						fakeGrpc.DialReturns(conn, nil)
 						fakeNodePlugin.ProbeNodeReturns(&csi.ProbeNodeResponse{}, nil)
 					})
 
@@ -102,6 +107,8 @@ var _ = Describe("CSIPluginDiscoverer", func() {
 
 						_, pluginFound := drivers[driverName]
 						Expect(pluginFound).To(Equal(true))
+
+						Expect(conn.CloseCallCount()).To(Equal(1))
 					})
 
 					Context("given re-discovery", func() {
@@ -144,6 +151,8 @@ var _ = Describe("CSIPluginDiscoverer", func() {
 							Expect(fakeCsi.NewNodeClientCallCount()).To(Equal(2))
 							Expect(fakeNodePlugin.ProbeNodeCallCount()).To(Equal(2))
 
+							Expect(conn.CloseCallCount()).To(Equal(2))
+
 							Expect(len(drivers)).To(Equal(1))
 
 							_, pluginFound := drivers[driverName]
@@ -153,7 +162,12 @@ var _ = Describe("CSIPluginDiscoverer", func() {
 				})
 
 				Context("given the node is not available", func() {
+					var (
+						conn *grpc_fake.FakeClientConn
+					)
 					BeforeEach(func() {
+						conn = new(grpc_fake.FakeClientConn)
+						fakeGrpc.DialReturns(conn, nil)
 						fakeNodePlugin.ProbeNodeReturns(nil, errors.New("connection-refused"))
 					})
 
@@ -164,6 +178,8 @@ var _ = Describe("CSIPluginDiscoverer", func() {
 
 						Expect(fakeNodePlugin.ProbeNodeCallCount()).To(Equal(1))
 
+						Expect(conn.CloseCallCount()).To(Equal(1))
+
 						Expect(len(drivers)).To(Equal(0))
 					})
 				})
@@ -171,6 +187,9 @@ var _ = Describe("CSIPluginDiscoverer", func() {
 		})
 
 		Context("given more than one plugin path", func() {
+			var (
+				conn *grpc_fake.FakeClientConn
+			)
 
 			BeforeEach(func() {
 				pluginPaths = []string{firstPluginsDirectory, secondPluginsDirectory}
@@ -205,6 +224,9 @@ var _ = Describe("CSIPluginDiscoverer", func() {
 					}
 					err = csiplugin.WriteSpec(logger, secondPluginsDirectory, spec2)
 					Expect(err).NotTo(HaveOccurred())
+
+					conn = new(grpc_fake.FakeClientConn)
+					fakeGrpc.DialReturns(conn, nil)
 
 					// make both plugins active
 					fakeCsi.NewNodeClientReturns(fakeNodePlugin)
@@ -243,6 +265,9 @@ var _ = Describe("CSIPluginDiscoverer", func() {
 					fmt.Sprintf("csi-plugin-%d", config.GinkgoConfig.ParallelNode)
 					err = csiplugin.WriteSpec(logger, secondPluginsDirectory, spec)
 					Expect(err).NotTo(HaveOccurred())
+
+					conn = new(grpc_fake.FakeClientConn)
+					fakeGrpc.DialReturns(conn, nil)
 
 					// make both plugins active
 					fakeCsi.NewNodeClientReturns(fakeNodePlugin)
