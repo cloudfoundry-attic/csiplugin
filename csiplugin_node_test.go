@@ -24,6 +24,7 @@ var _ = Describe("CsiPluginNode", func() {
 		conn           *grpc_fake.FakeClientConn
 		fakeCsi        *csi_fake.FakeCsi
 		mountResponse  volman.MountResponse
+		volumesRootDir string
 	)
 
 	BeforeEach(func() {
@@ -37,7 +38,8 @@ var _ = Describe("CsiPluginNode", func() {
 		fakeGrpc = &grpc_fake.FakeGrpc{}
 		fakeCsi = &csi_fake.FakeCsi{}
 		fakeCsi.NewNodeClientReturns(fakeNodeClient)
-		csiPlugin = csiplugin.NewCsiPlugin(fakeNodeClient, fakePluginSpec, fakeGrpc, fakeCsi)
+		volumesRootDir = "/var/vcap/data/mount"
+		csiPlugin = csiplugin.NewCsiPlugin(fakeNodeClient, fakePluginSpec, fakeGrpc, fakeCsi, volumesRootDir)
 		conn = new(grpc_fake.FakeClientConn)
 		fakeGrpc.DialReturns(conn, nil)
 	})
@@ -58,7 +60,7 @@ var _ = Describe("CsiPluginNode", func() {
 		It("Send publish request to CSI node server", func() {
 			Expect(err).ToNot(HaveOccurred())
 			expectedResponse := &volman.MountResponse{
-				Path: "/var/vcap/data/fakevolumeid/",
+				Path: volumesRootDir + "/fakevolumeid",
 			}
 			Expect(fakeNodeClient.NodePublishVolumeCallCount()).To(Equal(1))
 			Expect(mountResponse.Path).To(Equal(expectedResponse.Path))

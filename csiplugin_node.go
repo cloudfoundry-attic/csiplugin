@@ -17,10 +17,11 @@ import (
 )
 
 type nodeWrapper struct {
-	Impl     interface{}
-	Spec     volman.PluginSpec
-	grpcShim grpcshim.Grpc
-	csiShim  csishim.Csi
+	Impl           interface{}
+	Spec           volman.PluginSpec
+	grpcShim       grpcshim.Grpc
+	csiShim        csishim.Csi
+	volumesRootDir string
 }
 
 func (dw *nodeWrapper) GetImplementation() interface{} {
@@ -40,7 +41,7 @@ func (dw *nodeWrapper) Mount(logger lager.Logger, driverId string, volumeId stri
 	}
 
 	// Diego executor can only bind mount path starting with /var/vcap/data?
-	targetPath := "/var/vcap/data/" + volumeId + "/"
+	targetPath := dw.volumesRootDir + "/" + volumeId
 	volId := &csi.VolumeID{Values: map[string]string{"volume_name": volumeId}}
 
 	nodePlugin := dw.csiShim.NewNodeClient(conn)
@@ -78,11 +79,12 @@ func (dw *nodeWrapper) Matches(logger lager.Logger, otherSpec volman.PluginSpec)
 	return matches
 }
 
-func NewCsiPlugin(plugin csi.NodeClient, pluginSpec volman.PluginSpec, grpcShim grpcshim.Grpc, csiShim csishim.Csi) volman.Plugin {
+func NewCsiPlugin(plugin csi.NodeClient, pluginSpec volman.PluginSpec, grpcShim grpcshim.Grpc, csiShim csishim.Csi, volumesRootDir string) volman.Plugin {
 	return &nodeWrapper{
-		Impl:     plugin,
-		Spec:     pluginSpec,
-		grpcShim: grpcShim,
-		csiShim:  csiShim,
+		Impl:           plugin,
+		Spec:           pluginSpec,
+		grpcShim:       grpcShim,
+		csiShim:        csiShim,
+		volumesRootDir: volumesRootDir,
 	}
 }

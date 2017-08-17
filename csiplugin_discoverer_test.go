@@ -1,22 +1,23 @@
 package csiplugin_test
 
 import (
+	"errors"
+	"fmt"
+	"io/ioutil"
+	"os"
+
 	"code.cloudfoundry.org/goshims/filepathshim"
 	"code.cloudfoundry.org/goshims/filepathshim/filepath_fake"
 	"code.cloudfoundry.org/goshims/grpcshim/grpc_fake"
 	"code.cloudfoundry.org/lager/lagertest"
 	"code.cloudfoundry.org/volman"
 	"code.cloudfoundry.org/volman/vollocal"
-	"errors"
-	"fmt"
 	"github.com/Kaixiang/csiplugin"
 	. "github.com/onsi/ginkgo"
 	"github.com/onsi/ginkgo/config"
 	. "github.com/onsi/gomega"
 	"github.com/paulcwarren/spec"
 	"github.com/paulcwarren/spec/csishim/csi_fake"
-	"io/ioutil"
-	"os"
 )
 
 var _ = Describe("CSIPluginDiscoverer", func() {
@@ -33,6 +34,7 @@ var _ = Describe("CSIPluginDiscoverer", func() {
 		pluginPaths            []string
 		drivers                map[string]volman.Plugin
 		err                    error
+		volumesRootDir         string
 	)
 
 	BeforeEach(func() {
@@ -44,13 +46,14 @@ var _ = Describe("CSIPluginDiscoverer", func() {
 		fakeCsi = &csi_fake.FakeCsi{}
 		fakeNodePlugin = &csi_fake.FakeNodeClient{}
 		pluginPaths = []string{firstPluginsDirectory}
+		volumesRootDir = "/var/vcap/data/mounts"
 
 		logger = lagertest.NewTestLogger("csi-plugin-discoverer-test")
 		registry = vollocal.NewPluginRegistry()
 	})
 
 	JustBeforeEach(func() {
-		discoverer = csiplugin.NewCsiPluginDiscovererWithShims(logger, registry, pluginPaths, &filepathshim.FilepathShim{}, fakeGrpc, fakeCsi)
+		discoverer = csiplugin.NewCsiPluginDiscovererWithShims(logger, registry, pluginPaths, &filepathshim.FilepathShim{}, fakeGrpc, fakeCsi, volumesRootDir)
 	})
 
 	Describe("#Discover", func() {
