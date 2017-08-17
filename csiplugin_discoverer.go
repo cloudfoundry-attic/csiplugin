@@ -1,6 +1,8 @@
 package csiplugin
 
 import (
+	"path/filepath"
+
 	"code.cloudfoundry.org/goshims/filepathshim"
 	"code.cloudfoundry.org/goshims/grpcshim"
 	"code.cloudfoundry.org/lager"
@@ -9,7 +11,6 @@ import (
 	"github.com/paulcwarren/spec/csishim"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
-	"path/filepath"
 )
 
 type csiPluginDiscoverer struct {
@@ -102,7 +103,7 @@ func (p *csiPluginDiscoverer) Discover(logger lager.Logger) (map[string]volman.P
 					continue
 				}
 
-				plugin := NewCsiPlugin(nodePlugin, pluginSpec)
+				plugin := NewCsiPlugin(nodePlugin, pluginSpec, p.grpcShim, p.csiShim)
 				plugins[csiPluginSpec.Name] = plugin
 			} else {
 				logger.Info("discovered-plugin-ignored", lager.Data{"name": pluginSpec.Name, "address": pluginSpec.Address})
