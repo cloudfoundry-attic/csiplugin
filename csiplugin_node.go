@@ -7,7 +7,6 @@ import (
 	"path"
 	"path/filepath"
 	"reflect"
-	"strings"
 	"syscall"
 
 	"golang.org/x/net/context"
@@ -83,25 +82,20 @@ func (dw *nodeWrapper) Mount(logger lager.Logger, driverId string, volumeId stri
 }
 
 func createVolumesRootifNotExist(logger lager.Logger, mountPath string, osShim osshim.Os) error {
-	dir, err := filepath.Abs(mountPath)
+	mountPath, err := filepath.Abs(mountPath)
 	if err != nil {
 		logger.Fatal("abs-failed", err)
 	}
 
-	if !strings.HasSuffix(dir, "/") {
-		dir = fmt.Sprintf("%s/", dir)
-	}
-
-	mountsPathRoot := fmt.Sprintf("%s%s", dir, mountPath)
-	logger.Debug(mountsPathRoot)
-	_, err = osShim.Stat(mountsPathRoot)
+	logger.Debug(mountPath)
+	_, err = osShim.Stat(mountPath)
 
 	if err != nil {
 		if osShim.IsNotExist(err) {
 			// Create the directory if not exist
 			orig := syscall.Umask(000)
 			defer syscall.Umask(orig)
-			err = osShim.MkdirAll(mountsPathRoot, os.ModePerm)
+			err = osShim.MkdirAll(mountPath, os.ModePerm)
 			if err != nil {
 				logger.Error("mkdirall", err)
 				return err
