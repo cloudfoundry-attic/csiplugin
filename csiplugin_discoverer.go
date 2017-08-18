@@ -15,39 +15,39 @@ import (
 )
 
 type csiPluginDiscoverer struct {
-	logger         lager.Logger
-	pluginRegistry volman.PluginRegistry
-	pluginPaths    []string
-	filepathShim   filepathshim.Filepath
-	grpcShim       grpcshim.Grpc
-	csiShim        csishim.Csi
-	osShim         osshim.Os
-	volumesRootDir string
+	logger          lager.Logger
+	pluginRegistry  volman.PluginRegistry
+	pluginPaths     []string
+	filepathShim    filepathshim.Filepath
+	grpcShim        grpcshim.Grpc
+	csiShim         csishim.Csi
+	osShim          osshim.Os
+	csiMountRootDir string
 }
 
-func NewCsiPluginDiscoverer(logger lager.Logger, pluginRegistry volman.PluginRegistry, pluginPaths []string, volumesRootDir string) volman.Discoverer {
+func NewCsiPluginDiscoverer(logger lager.Logger, pluginRegistry volman.PluginRegistry, pluginPaths []string, csiMountRootDir string) volman.Discoverer {
 	return &csiPluginDiscoverer{
-		logger:         logger,
-		pluginRegistry: pluginRegistry,
-		pluginPaths:    pluginPaths,
-		filepathShim:   &filepathshim.FilepathShim{},
-		grpcShim:       &grpcshim.GrpcShim{},
-		csiShim:        &csishim.CsiShim{},
-		osShim:         &osshim.OsShim{},
-		volumesRootDir: volumesRootDir,
+		logger:          logger,
+		pluginRegistry:  pluginRegistry,
+		pluginPaths:     pluginPaths,
+		filepathShim:    &filepathshim.FilepathShim{},
+		grpcShim:        &grpcshim.GrpcShim{},
+		csiShim:         &csishim.CsiShim{},
+		osShim:          &osshim.OsShim{},
+		csiMountRootDir: csiMountRootDir,
 	}
 }
 
-func NewCsiPluginDiscovererWithShims(logger lager.Logger, pluginRegistry volman.PluginRegistry, pluginPaths []string, filepathShim filepathshim.Filepath, grpcShim grpcshim.Grpc, csiShim csishim.Csi, osShim osshim.Os, volumesRootDir string) volman.Discoverer {
+func NewCsiPluginDiscovererWithShims(logger lager.Logger, pluginRegistry volman.PluginRegistry, pluginPaths []string, filepathShim filepathshim.Filepath, grpcShim grpcshim.Grpc, csiShim csishim.Csi, osShim osshim.Os, csiMountRootDir string) volman.Discoverer {
 	return &csiPluginDiscoverer{
-		logger:         logger,
-		pluginRegistry: pluginRegistry,
-		pluginPaths:    pluginPaths,
-		filepathShim:   filepathShim,
-		grpcShim:       grpcShim,
-		csiShim:        csiShim,
-		osShim:         osShim,
-		volumesRootDir: volumesRootDir,
+		logger:          logger,
+		pluginRegistry:  pluginRegistry,
+		pluginPaths:     pluginPaths,
+		filepathShim:    filepathShim,
+		grpcShim:        grpcShim,
+		csiShim:         csiShim,
+		osShim:          osShim,
+		csiMountRootDir: csiMountRootDir,
 	}
 }
 
@@ -110,7 +110,7 @@ func (p *csiPluginDiscoverer) Discover(logger lager.Logger) (map[string]volman.P
 					continue
 				}
 
-				plugin := NewCsiPlugin(nodePlugin, pluginSpec, p.grpcShim, p.csiShim, p.osShim, p.volumesRootDir)
+				plugin := NewCsiPlugin(nodePlugin, pluginSpec, p.grpcShim, p.csiShim, p.osShim, p.csiMountRootDir)
 				plugins[csiPluginSpec.Name] = plugin
 			} else {
 				logger.Info("discovered-plugin-ignored", lager.Data{"name": pluginSpec.Name, "address": pluginSpec.Address})

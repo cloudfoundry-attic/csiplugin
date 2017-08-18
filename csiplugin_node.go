@@ -22,12 +22,12 @@ import (
 )
 
 type nodeWrapper struct {
-	Impl           interface{}
-	Spec           volman.PluginSpec
-	grpcShim       grpcshim.Grpc
-	csiShim        csishim.Csi
-	osShim         osshim.Os
-	volumesRootDir string
+	Impl            interface{}
+	Spec            volman.PluginSpec
+	grpcShim        grpcshim.Grpc
+	csiShim         csishim.Csi
+	osShim          osshim.Os
+	csiMountRootDir string
 }
 
 func (dw *nodeWrapper) GetImplementation() interface{} {
@@ -46,14 +46,14 @@ func (dw *nodeWrapper) Mount(logger lager.Logger, driverId string, volumeId stri
 		return volman.MountResponse{}, err
 	}
 
-	err = createVolumesRootifNotExist(logger, dw.volumesRootDir, dw.osShim)
+	err = createVolumesRootifNotExist(logger, dw.csiMountRootDir, dw.osShim)
 	if err != nil {
 		logger.Error("create-volumes-root", err)
 		return volman.MountResponse{}, err
 	}
 
 	// Diego executor can only bind mount path starting with /var/vcap/data?
-	targetPath := dw.volumesRootDir + "/" + volumeId
+	targetPath := dw.csiMountRootDir + "/" + volumeId
 	volId := &csi.VolumeID{Values: map[string]string{"volume_name": volumeId}}
 
 	nodePlugin := dw.csiShim.NewNodeClient(conn)
@@ -120,13 +120,13 @@ func (dw *nodeWrapper) Matches(logger lager.Logger, otherSpec volman.PluginSpec)
 	return matches
 }
 
-func NewCsiPlugin(plugin csi.NodeClient, pluginSpec volman.PluginSpec, grpcShim grpcshim.Grpc, csiShim csishim.Csi, osShim osshim.Os, volumesRootDir string) volman.Plugin {
+func NewCsiPlugin(plugin csi.NodeClient, pluginSpec volman.PluginSpec, grpcShim grpcshim.Grpc, csiShim csishim.Csi, osShim osshim.Os, csiMountRootDir string) volman.Plugin {
 	return &nodeWrapper{
-		Impl:           plugin,
-		Spec:           pluginSpec,
-		grpcShim:       grpcShim,
-		csiShim:        csiShim,
-		osShim:         osShim,
-		volumesRootDir: volumesRootDir,
+		Impl:            plugin,
+		Spec:            pluginSpec,
+		grpcShim:        grpcShim,
+		csiShim:         csiShim,
+		osShim:          osShim,
+		csiMountRootDir: csiMountRootDir,
 	}
 }
