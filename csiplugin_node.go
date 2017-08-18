@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -46,14 +47,14 @@ func (dw *nodeWrapper) Mount(logger lager.Logger, driverId string, volumeId stri
 		return volman.MountResponse{}, err
 	}
 
-	err = createVolumesRootifNotExist(logger, dw.csiMountRootDir, dw.osShim)
+	mountPath := path.Join(dw.csiMountRootDir, dw.Spec.Name)
+	err = createVolumesRootifNotExist(logger, mountPath, dw.osShim)
 	if err != nil {
 		logger.Error("create-volumes-root", err)
 		return volman.MountResponse{}, err
 	}
 
-	// Diego executor can only bind mount path starting with /var/vcap/data?
-	targetPath := dw.csiMountRootDir + "/" + volumeId
+	targetPath := path.Join(mountPath, volumeId)
 	volId := &csi.VolumeID{Values: map[string]string{"volume_name": volumeId}}
 
 	nodePlugin := dw.csiShim.NewNodeClient(conn)
@@ -81,8 +82,8 @@ func (dw *nodeWrapper) Mount(logger lager.Logger, driverId string, volumeId stri
 	return volman.MountResponse{Path: targetPath}, nil
 }
 
-func createVolumesRootifNotExist(logger lager.Logger, volumesRoot string, osShim osshim.Os) error {
-	dir, err := filepath.Abs(volumesRoot)
+func createVolumesRootifNotExist(logger lager.Logger, mountPath string, osShim osshim.Os) error {
+	dir, err := filepath.Abs(mountPath)
 	if err != nil {
 		logger.Fatal("abs-failed", err)
 	}
@@ -91,7 +92,7 @@ func createVolumesRootifNotExist(logger lager.Logger, volumesRoot string, osShim
 		dir = fmt.Sprintf("%s/", dir)
 	}
 
-	mountsPathRoot := fmt.Sprintf("%s%s", dir, volumesRoot)
+	mountsPathRoot := fmt.Sprintf("%s%s", dir, mountPath)
 	logger.Debug(mountsPathRoot)
 	_, err = osShim.Stat(mountsPathRoot)
 

@@ -2,6 +2,7 @@ package csiplugin_test
 
 import (
 	"os"
+	"path"
 	"time"
 
 	"code.cloudfoundry.org/goshims/grpcshim/grpc_fake"
@@ -75,7 +76,7 @@ var _ = Describe("CsiPluginNode", func() {
 			It("Create volumesRoot directory and Send publish request to CSI node server", func() {
 				Expect(err).ToNot(HaveOccurred())
 				expectedResponse := &volman.MountResponse{
-					Path: volumesRootDir + "/fakevolumeid",
+					Path: path.Join(volumesRootDir, "fakecsi", "fakevolumeid"),
 				}
 				Expect(fakeOs.MkdirAllCallCount()).To(Equal(1))
 				Expect(fakeNodeClient.NodePublishVolumeCallCount()).To(Equal(1))
@@ -95,7 +96,7 @@ var _ = Describe("CsiPluginNode", func() {
 			It("Keeps going with existing volumesRoot directory", func() {
 				Expect(err).ToNot(HaveOccurred())
 				expectedResponse := &volman.MountResponse{
-					Path: volumesRootDir + "/fakevolumeid",
+					Path: path.Join(volumesRootDir, "fakecsi", "fakevolumeid"),
 				}
 				Expect(fakeOs.MkdirAllCallCount()).To(Equal(0))
 				Expect(fakeNodeClient.NodePublishVolumeCallCount()).To(Equal(1))
