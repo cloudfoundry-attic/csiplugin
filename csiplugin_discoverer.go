@@ -5,6 +5,7 @@ import (
 
 	"code.cloudfoundry.org/goshims/filepathshim"
 	"code.cloudfoundry.org/goshims/grpcshim"
+	"code.cloudfoundry.org/goshims/osshim"
 	"code.cloudfoundry.org/lager"
 	"code.cloudfoundry.org/volman"
 	"github.com/paulcwarren/spec"
@@ -20,6 +21,7 @@ type csiPluginDiscoverer struct {
 	filepathShim   filepathshim.Filepath
 	grpcShim       grpcshim.Grpc
 	csiShim        csishim.Csi
+	osShim         osshim.Os
 	volumesRootDir string
 }
 
@@ -31,11 +33,12 @@ func NewCsiPluginDiscoverer(logger lager.Logger, pluginRegistry volman.PluginReg
 		filepathShim:   &filepathshim.FilepathShim{},
 		grpcShim:       &grpcshim.GrpcShim{},
 		csiShim:        &csishim.CsiShim{},
+		osShim:         &osshim.OsShim{},
 		volumesRootDir: volumesRootDir,
 	}
 }
 
-func NewCsiPluginDiscovererWithShims(logger lager.Logger, pluginRegistry volman.PluginRegistry, pluginPaths []string, filepathShim filepathshim.Filepath, grpcShim grpcshim.Grpc, csiShim csishim.Csi, volumesRootDir string) volman.Discoverer {
+func NewCsiPluginDiscovererWithShims(logger lager.Logger, pluginRegistry volman.PluginRegistry, pluginPaths []string, filepathShim filepathshim.Filepath, grpcShim grpcshim.Grpc, csiShim csishim.Csi, osShim osshim.Os, volumesRootDir string) volman.Discoverer {
 	return &csiPluginDiscoverer{
 		logger:         logger,
 		pluginRegistry: pluginRegistry,
@@ -43,6 +46,7 @@ func NewCsiPluginDiscovererWithShims(logger lager.Logger, pluginRegistry volman.
 		filepathShim:   filepathShim,
 		grpcShim:       grpcShim,
 		csiShim:        csiShim,
+		osShim:         osShim,
 		volumesRootDir: volumesRootDir,
 	}
 }
@@ -106,7 +110,7 @@ func (p *csiPluginDiscoverer) Discover(logger lager.Logger) (map[string]volman.P
 					continue
 				}
 
-				plugin := NewCsiPlugin(nodePlugin, pluginSpec, p.grpcShim, p.csiShim, p.volumesRootDir)
+				plugin := NewCsiPlugin(nodePlugin, pluginSpec, p.grpcShim, p.csiShim, p.osShim, p.volumesRootDir)
 				plugins[csiPluginSpec.Name] = plugin
 			} else {
 				logger.Info("discovered-plugin-ignored", lager.Data{"name": pluginSpec.Name, "address": pluginSpec.Address})

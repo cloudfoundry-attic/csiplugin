@@ -9,6 +9,7 @@ import (
 	"code.cloudfoundry.org/goshims/filepathshim"
 	"code.cloudfoundry.org/goshims/filepathshim/filepath_fake"
 	"code.cloudfoundry.org/goshims/grpcshim/grpc_fake"
+	"code.cloudfoundry.org/goshims/osshim/os_fake"
 	"code.cloudfoundry.org/lager/lagertest"
 	"code.cloudfoundry.org/volman"
 	"code.cloudfoundry.org/volman/vollocal"
@@ -30,6 +31,7 @@ var _ = Describe("CSIPluginDiscoverer", func() {
 		fakeFilePath           *filepath_fake.FakeFilepath
 		fakeGrpc               *grpc_fake.FakeGrpc
 		fakeCsi                *csi_fake.FakeCsi
+		fakeOs                 *os_fake.FakeOs
 		fakeNodePlugin         *csi_fake.FakeNodeClient
 		pluginPaths            []string
 		drivers                map[string]volman.Plugin
@@ -44,6 +46,7 @@ var _ = Describe("CSIPluginDiscoverer", func() {
 		fakeFilePath = &filepath_fake.FakeFilepath{}
 		fakeGrpc = &grpc_fake.FakeGrpc{}
 		fakeCsi = &csi_fake.FakeCsi{}
+		fakeOs = &os_fake.FakeOs{}
 		fakeNodePlugin = &csi_fake.FakeNodeClient{}
 		pluginPaths = []string{firstPluginsDirectory}
 		volumesRootDir = "/var/vcap/data/mounts"
@@ -53,7 +56,7 @@ var _ = Describe("CSIPluginDiscoverer", func() {
 	})
 
 	JustBeforeEach(func() {
-		discoverer = csiplugin.NewCsiPluginDiscovererWithShims(logger, registry, pluginPaths, &filepathshim.FilepathShim{}, fakeGrpc, fakeCsi, volumesRootDir)
+		discoverer = csiplugin.NewCsiPluginDiscovererWithShims(logger, registry, pluginPaths, &filepathshim.FilepathShim{}, fakeGrpc, fakeCsi, fakeOs, volumesRootDir)
 	})
 
 	Describe("#Discover", func() {
