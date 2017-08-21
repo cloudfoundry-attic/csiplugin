@@ -42,7 +42,7 @@ func (dw *nodeWrapper) GetImplementation() interface{} {
 	return dw.Impl
 }
 
-func (dw *nodeWrapper) Unmount(logger lager.Logger, driverId string, volumeId string) error {
+func (dw *nodeWrapper) Unmount(logger lager.Logger, volumeId string) error {
 	logger = logger.Session("unmount")
 	logger.Info("start")
 	defer logger.Info("end")
@@ -75,7 +75,7 @@ func (dw *nodeWrapper) Unmount(logger lager.Logger, driverId string, volumeId st
 	return nil
 }
 
-func (dw *nodeWrapper) Mount(logger lager.Logger, driverId string, volumeId string, config map[string]interface{}) (volman.MountResponse, error) {
+func (dw *nodeWrapper) Mount(logger lager.Logger, volumeId string, config map[string]interface{}) (volman.MountResponse, error) {
 	logger = logger.Session("mount")
 	logger.Info("start")
 	defer logger.Info("end")

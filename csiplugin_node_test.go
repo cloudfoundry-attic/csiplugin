@@ -54,7 +54,7 @@ var _ = Describe("CsiPluginNode", func() {
 
 	Describe("#Mount", func() {
 		JustBeforeEach(func() {
-			mountResponse, err = csiPlugin.Mount(logger, "fakedriverid", "fakevolumeid", map[string]interface{}{})
+			mountResponse, err = csiPlugin.Mount(logger, "fakevolumeid", map[string]interface{}{})
 		})
 
 		BeforeEach(func() {
@@ -135,7 +135,7 @@ var _ = Describe("CsiPluginNode", func() {
 	Describe("#Unmount", func() {
 		var ()
 		JustBeforeEach(func() {
-			err = csiPlugin.Unmount(logger, "fakedriverid", "fakevolumeid")
+			err = csiPlugin.Unmount(logger, "fakevolumeid")
 		})
 
 		Context("When csi node server unmount successful", func() {
