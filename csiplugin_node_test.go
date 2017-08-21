@@ -52,11 +52,11 @@ var _ = Describe("CsiPluginNode", func() {
 		fakeGrpc.DialReturns(conn, nil)
 	})
 
-	JustBeforeEach(func() {
-		mountResponse, err = csiPlugin.Mount(logger, "fakedriverid", "fakevolumeid", map[string]interface{}{})
-	})
-
 	Describe("#Mount", func() {
+		JustBeforeEach(func() {
+			mountResponse, err = csiPlugin.Mount(logger, "fakedriverid", "fakevolumeid", map[string]interface{}{})
+		})
+
 		BeforeEach(func() {
 			fakeNodeClient.NodePublishVolumeReturns(&csi.NodePublishVolumeResponse{
 				Reply: &csi.NodePublishVolumeResponse_Result_{
@@ -131,6 +131,54 @@ var _ = Describe("CsiPluginNode", func() {
 			})
 		})
 	})
+
+	Describe("#Unmount", func() {
+		var ()
+		JustBeforeEach(func() {
+			err = csiPlugin.Unmount(logger, "fakedriverid", "fakevolumeid")
+		})
+
+		Context("When csi node server unmount successful", func() {
+			BeforeEach(func() {
+				fakeNodeClient.NodeUnpublishVolumeReturns(&csi.NodeUnpublishVolumeResponse{
+					Reply: &csi.NodeUnpublishVolumeResponse_Result_{
+						Result: &csi.NodeUnpublishVolumeResponse_Result{},
+					},
+				}, nil)
+			})
+
+			It("should succeed", func() {
+				Expect(err).NotTo(HaveOccurred())
+				Expect(fakeNodeClient.NodeUnpublishVolumeCallCount()).To(Equal(1))
+				Expect(conn.CloseCallCount()).To(Equal(1))
+			})
+		})
+
+		Context("When csi node server unmount unsuccessful", func() {
+			BeforeEach(func() {
+				fakeNodeClient.NodeUnpublishVolumeReturns(&csi.NodeUnpublishVolumeResponse{
+					Reply: &csi.NodeUnpublishVolumeResponse_Error{
+						Error: &csi.Error{
+							Value: &csi.Error_NodeUnpublishVolumeError_{
+								NodeUnpublishVolumeError: &csi.Error_NodeUnpublishVolumeError{
+									ErrorCode:        csi.Error_NodeUnpublishVolumeError_UNMOUNT_ERROR,
+									ErrorDescription: "Error unmounting volume",
+								},
+							},
+						},
+					},
+				}, nil)
+			})
+
+			It("report error and log it", func() {
+				Expect(err).To(HaveOccurred())
+				Expect(fakeNodeClient.NodeUnpublishVolumeCallCount()).To(Equal(1))
+				Expect(logger.Buffer()).To(gbytes.Say("Error unmounting volume"))
+				Expect(conn.CloseCallCount()).To(Equal(1))
+			})
+		})
+	})
+
 })
 
 type FakeFileInfo struct {

@@ -21,6 +21,14 @@ import (
 	"github.com/paulcwarren/spec/csishim"
 )
 
+func csiVersion() *csi.Version {
+	return &csi.Version{
+		Major: 0,
+		Minor: 0,
+		Patch: 1,
+	}
+}
+
 type nodeWrapper struct {
 	Impl            interface{}
 	Spec            volman.PluginSpec
@@ -32,6 +40,39 @@ type nodeWrapper struct {
 
 func (dw *nodeWrapper) GetImplementation() interface{} {
 	return dw.Impl
+}
+
+func (dw *nodeWrapper) Unmount(logger lager.Logger, driverId string, volumeId string) error {
+	logger = logger.Session("unmount")
+	logger.Info("start")
+	defer logger.Info("end")
+
+	conn, err := dw.grpcShim.Dial(dw.Spec.Address, grpc.WithInsecure())
+	defer conn.Close()
+	if err != nil {
+		logger.Error("grpc-dial", err, lager.Data{"address": dw.Spec.Address})
+		return err
+	}
+
+	mountPath := path.Join(dw.csiMountRootDir, dw.Spec.Name)
+	targetPath := path.Join(mountPath, volumeId)
+	volId := &csi.VolumeID{Values: map[string]string{"volume_name": volumeId}}
+
+	nodePlugin := dw.csiShim.NewNodeClient(conn)
+	nodeResponse, err := nodePlugin.NodeUnpublishVolume(context.TODO(), &csi.NodeUnpublishVolumeRequest{
+		Version:    csiVersion(),
+		VolumeId:   volId,
+		TargetPath: targetPath,
+	})
+
+	logger.Debug(fmt.Sprintf("nodeResponse: %#v", nodeResponse))
+
+	if nodeResponse.GetError() != nil {
+		logger.Error("node-response-error", err, lager.Data{"Error": nodeResponse.GetError().String()})
+		return errors.New(nodeResponse.GetError().String())
+	}
+
+	return nil
 }
 
 func (dw *nodeWrapper) Mount(logger lager.Logger, driverId string, volumeId string, config map[string]interface{}) (volman.MountResponse, error) {
@@ -58,11 +99,7 @@ func (dw *nodeWrapper) Mount(logger lager.Logger, driverId string, volumeId stri
 
 	nodePlugin := dw.csiShim.NewNodeClient(conn)
 	nodeResponse, err := nodePlugin.NodePublishVolume(context.TODO(), &csi.NodePublishVolumeRequest{
-		Version: &csi.Version{
-			Major: 0,
-			Minor: 0,
-			Patch: 1,
-		},
+		Version:    csiVersion(),
 		VolumeId:   volId,
 		TargetPath: targetPath,
 		VolumeCapability: &csi.VolumeCapability{
