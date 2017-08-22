@@ -7,6 +7,7 @@ import (
 	"path"
 	"path/filepath"
 	"reflect"
+	"sync"
 	"syscall"
 
 	"golang.org/x/net/context"
@@ -35,6 +36,8 @@ type nodeWrapper struct {
 	grpcShim        grpcshim.Grpc
 	csiShim         csishim.Csi
 	osShim          osshim.Os
+	volumes         map[string]int
+	volumesMutex    sync.RWMutex
 	csiMountRootDir string
 }
 
@@ -71,6 +74,18 @@ func (dw *nodeWrapper) Unmount(logger lager.Logger, volumeId string) error {
 		logger.Error("node-response-error", err, lager.Data{"Error": nodeResponse.GetError().String()})
 		return errors.New(nodeResponse.GetError().String())
 	}
+
+	dw.volumesMutex.Lock()
+	defer dw.volumesMutex.Unlock()
+
+	if count, ok := dw.volumes[volumeId]; ok {
+		if count > 1 {
+			dw.volumes[volumeId] = count - 1
+		} else {
+			delete(dw.volumes, volumeId)
+		}
+	}
+	logger.Debug(fmt.Sprintf("reference count: %#v", dw.volumes))
 
 	return nil
 }
@@ -115,6 +130,16 @@ func (dw *nodeWrapper) Mount(logger lager.Logger, volumeId string, config map[st
 		return volman.MountResponse{}, errors.New(nodeResponse.GetError().String())
 	}
 
+	dw.volumesMutex.Lock()
+	defer dw.volumesMutex.Unlock()
+
+	if count, ok := dw.volumes[volumeId]; ok {
+		dw.volumes[volumeId] = count + 1
+	} else {
+		dw.volumes[volumeId] = 1
+	}
+
+	logger.Debug(fmt.Sprintf("reference count: %#v", dw.volumes))
 	return volman.MountResponse{Path: targetPath}, nil
 }
 
@@ -142,6 +167,25 @@ func createVolumesRootifNotExist(logger lager.Logger, mountPath string, osShim o
 	return nil
 }
 
+func (dw *nodeWrapper) ListVolumes(logger lager.Logger) ([]string, error) {
+	logger = logger.Session("listvolumes")
+	logger.Info("start")
+	defer logger.Info("end")
+
+	logger.Debug(fmt.Sprintf("reference count: %#v", dw.volumes))
+
+	dw.volumesMutex.RLock()
+	defer dw.volumesMutex.RUnlock()
+
+	volumes := make([]string, len(dw.volumes))
+	i := 0
+	for volume := range dw.volumes {
+		volumes[i] = volume
+		i++
+	}
+	return volumes, nil
+}
+
 func (dw *nodeWrapper) Matches(logger lager.Logger, otherSpec volman.PluginSpec) bool {
 	logger = logger.Session("matches")
 	logger.Info("start")
@@ -159,6 +203,7 @@ func NewCsiPlugin(plugin csi.NodeClient, pluginSpec volman.PluginSpec, grpcShim 
 		grpcShim:        grpcShim,
 		csiShim:         csiShim,
 		osShim:          osShim,
+		volumes:         map[string]int{},
 		csiMountRootDir: csiMountRootDir,
 	}
 }

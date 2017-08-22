@@ -1,8 +1,10 @@
 package csiplugin_test
 
 import (
+	"math/rand"
 	"os"
 	"path"
+	"sync"
 	"time"
 
 	"code.cloudfoundry.org/goshims/grpcshim/grpc_fake"
@@ -133,7 +135,6 @@ var _ = Describe("CsiPluginNode", func() {
 	})
 
 	Describe("#Unmount", func() {
-		var ()
 		JustBeforeEach(func() {
 			err = csiPlugin.Unmount(logger, "fakevolumeid")
 		})
@@ -179,6 +180,118 @@ var _ = Describe("CsiPluginNode", func() {
 		})
 	})
 
+	Describe("#ListVolumes", func() {
+		var (
+			volumeId string
+		)
+		BeforeEach(func() {
+			volumeId = "fakevolumeid"
+			fakeNodeClient.NodePublishVolumeReturns(&csi.NodePublishVolumeResponse{
+				Reply: &csi.NodePublishVolumeResponse_Result_{
+					Result: &csi.NodePublishVolumeResponse_Result{},
+				},
+			}, nil)
+			fakeNodeClient.NodeUnpublishVolumeReturns(&csi.NodeUnpublishVolumeResponse{
+				Reply: &csi.NodeUnpublishVolumeResponse_Result_{
+					Result: &csi.NodeUnpublishVolumeResponse_Result{},
+				},
+			}, nil)
+		})
+
+		Context("when a new volume get mounted", func() {
+			var (
+				err error
+			)
+
+			JustBeforeEach(func() {
+				_, err = csiPlugin.Mount(logger, volumeId, map[string]interface{}{})
+				Expect(err).ToNot(HaveOccurred())
+			})
+
+			It("should list the new volumes", func() {
+				volumes, err := csiPlugin.ListVolumes(logger)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(len(volumes)).To(Equal(1))
+				Expect(volumes).To(ContainElement(volumeId))
+			})
+
+			Context("when the same volume is mounted again", func() {
+				JustBeforeEach(func() {
+					_, err = csiPlugin.Mount(logger, volumeId, map[string]interface{}{})
+					Expect(err).ToNot(HaveOccurred())
+				})
+
+				Context("when the volume gets unmounted", func() {
+					JustBeforeEach(func() {
+						err = csiPlugin.Unmount(logger, volumeId)
+						Expect(err).ToNot(HaveOccurred())
+					})
+
+					It("should list the volume", func() {
+						volumes, err := csiPlugin.ListVolumes(logger)
+						Expect(err).ToNot(HaveOccurred())
+						Expect(len(volumes)).To(Equal(1))
+						Expect(volumes).To(ContainElement(volumeId))
+					})
+
+					Context("when the volume gets unmounted again", func() {
+						JustBeforeEach(func() {
+							err = csiPlugin.Unmount(logger, volumeId)
+							Expect(err).ToNot(HaveOccurred())
+						})
+
+						It("should not list the volume", func() {
+							volumes, err := csiPlugin.ListVolumes(logger)
+							Expect(err).ToNot(HaveOccurred())
+							Expect(len(volumes)).To(Equal(0))
+						})
+					})
+				})
+			})
+		})
+
+		Context("when mount and unmount are running in parallel", func() {
+			It("should still list volumes correctly afterwards", func() {
+				var wg sync.WaitGroup
+
+				wg.Add(8)
+
+				smash := func(volumeId string) {
+					defer GinkgoRecover()
+					defer wg.Done()
+					for i := 0; i < 1000; i++ {
+						_, err := csiPlugin.Mount(logger, volumeId, map[string]interface{}{})
+						Expect(err).NotTo(HaveOccurred())
+
+						r := rand.Intn(10)
+						time.Sleep(time.Duration(r) * time.Microsecond)
+
+						err = csiPlugin.Unmount(logger, volumeId)
+						Expect(err).NotTo(HaveOccurred())
+
+						r = rand.Intn(10)
+						time.Sleep(time.Duration(r) * time.Microsecond)
+					}
+				}
+
+				// Note go race detection should kick in if access is unsynchronized
+				go smash("some-instance-1")
+				go smash("some-instance-2")
+				go smash("some-instance-3")
+				go smash("some-instance-4")
+				go smash("some-instance-5")
+				go smash("some-instance-6")
+				go smash("some-instance-7")
+				go smash("some-instance-8")
+
+				wg.Wait()
+
+				volumes, err := csiPlugin.ListVolumes(logger)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(len(volumes)).To(Equal(0))
+			})
+		})
+	})
 })
 
 type FakeFileInfo struct {
