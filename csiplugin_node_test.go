@@ -3,7 +3,6 @@ package csiplugin_test
 import (
 	"math/rand"
 	"os"
-	"path"
 	"sync"
 	"time"
 
@@ -32,7 +31,6 @@ var _ = Describe("CsiPluginNode", func() {
 		fakeCsi        *csi_fake.FakeCsi
 		fakeOs         *os_fake.FakeOs
 		mountResponse  volman.MountResponse
-		fileInfo       *FakeFileInfo
 		volumesRootDir string
 	)
 
@@ -65,46 +63,6 @@ var _ = Describe("CsiPluginNode", func() {
 					Result: &csi.NodePublishVolumeResponse_Result{},
 				},
 			}, nil)
-		})
-
-		Context("when the volumesRoot doen't exist", func() {
-			BeforeEach(func() {
-				fileInfo = newFakeFileInfo()
-				err = os.ErrNotExist
-				fakeOs.StatReturns(fileInfo, err)
-				fakeOs.IsNotExistReturns(true)
-			})
-
-			It("Create volumesRoot directory and Send publish request to CSI node server", func() {
-				Expect(err).ToNot(HaveOccurred())
-				expectedResponse := &volman.MountResponse{
-					Path: path.Join(volumesRootDir, "fakecsi", "fakevolumeid"),
-				}
-				Expect(fakeOs.MkdirAllCallCount()).To(Equal(1))
-				Expect(fakeNodeClient.NodePublishVolumeCallCount()).To(Equal(1))
-				Expect(mountResponse.Path).To(Equal(expectedResponse.Path))
-				Expect(conn.CloseCallCount()).To(Equal(1))
-			})
-		})
-
-		Context("when the volumesRoot exist", func() {
-			BeforeEach(func() {
-				fileInfo = newFakeFileInfo()
-				err = os.ErrNotExist
-				fakeOs.StatReturns(fileInfo, err)
-				fakeOs.IsNotExistReturns(false)
-			})
-
-			It("Keeps going with existing volumesRoot directory", func() {
-				Expect(err).ToNot(HaveOccurred())
-				expectedResponse := &volman.MountResponse{
-					Path: path.Join(volumesRootDir, "fakecsi", "fakevolumeid"),
-				}
-				Expect(fakeOs.MkdirAllCallCount()).To(Equal(0))
-				Expect(fakeNodeClient.NodePublishVolumeCallCount()).To(Equal(1))
-				Expect(mountResponse.Path).To(Equal(expectedResponse.Path))
-				Expect(conn.CloseCallCount()).To(Equal(1))
-			})
 		})
 
 		Context("When csi node server response some error", func() {

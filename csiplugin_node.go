@@ -3,12 +3,9 @@ package csiplugin
 import (
 	"errors"
 	"fmt"
-	"os"
 	"path"
-	"path/filepath"
 	"reflect"
 	"sync"
-	"syscall"
 
 	"golang.org/x/net/context"
 
@@ -99,11 +96,6 @@ func (dw *nodeWrapper) Mount(logger lager.Logger, volumeId string, config map[st
 	}
 
 	mountPath := path.Join(dw.csiMountRootDir, dw.Spec.Name)
-	err = createVolumesRootifNotExist(logger, mountPath, dw.osShim)
-	if err != nil {
-		logger.Error("create-volumes-root", err)
-		return volman.MountResponse{}, err
-	}
 
 	targetPath := path.Join(mountPath, volumeId)
 	volId := &csi.VolumeID{Values: map[string]string{"volume_name": volumeId}}
@@ -137,30 +129,6 @@ func (dw *nodeWrapper) Mount(logger lager.Logger, volumeId string, config map[st
 
 	logger.Debug(fmt.Sprintf("reference count: %#v", dw.volumes))
 	return volman.MountResponse{Path: targetPath}, nil
-}
-
-func createVolumesRootifNotExist(logger lager.Logger, mountPath string, osShim osshim.Os) error {
-	mountPath, err := filepath.Abs(mountPath)
-	if err != nil {
-		logger.Fatal("abs-failed", err)
-	}
-
-	logger.Debug(mountPath)
-	_, err = osShim.Stat(mountPath)
-
-	if err != nil {
-		if osShim.IsNotExist(err) {
-			// Create the directory if not exist
-			orig := syscall.Umask(000)
-			defer syscall.Umask(orig)
-			err = osShim.MkdirAll(mountPath, os.ModePerm)
-			if err != nil {
-				logger.Error("mkdirall", err)
-				return err
-			}
-		}
-	}
-	return nil
 }
 
 func (dw *nodeWrapper) ListVolumes(logger lager.Logger) ([]string, error) {
