@@ -41,10 +41,6 @@ type nodeWrapper struct {
 	csiMountRootDir string
 }
 
-func (dw *nodeWrapper) GetImplementation() interface{} {
-	return dw.Impl
-}
-
 func (dw *nodeWrapper) Unmount(logger lager.Logger, volumeId string) error {
 	logger = logger.Session("unmount")
 	logger.Info("start")
