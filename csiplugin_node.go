@@ -15,8 +15,8 @@ import (
 	"code.cloudfoundry.org/goshims/osshim"
 	"code.cloudfoundry.org/lager"
 	"code.cloudfoundry.org/volman"
-	"github.com/paulcwarren/spec"
-	"github.com/paulcwarren/spec/csishim"
+	"code.cloudfoundry.org/csishim"
+	"github.com/container-storage-interface/spec/lib/go/csi"
 )
 
 func csiVersion() *csi.Version {
@@ -52,12 +52,12 @@ func (dw *nodeWrapper) Unmount(logger lager.Logger, volumeId string) error {
 
 	mountPath := path.Join(dw.csiMountRootDir, dw.Spec.Name)
 	targetPath := path.Join(mountPath, volumeId)
-	volId := &csi.VolumeID{Values: map[string]string{"volume_name": volumeId}}
+	volHandle := &csi.VolumeHandle{Id: volumeId}
 
 	nodePlugin := dw.csiShim.NewNodeClient(conn)
 	nodeResponse, err := nodePlugin.NodeUnpublishVolume(context.TODO(), &csi.NodeUnpublishVolumeRequest{
 		Version:    csiVersion(),
-		VolumeId:   volId,
+		VolumeHandle:   volHandle,
 		TargetPath: targetPath,
 	})
 
@@ -98,17 +98,21 @@ func (dw *nodeWrapper) Mount(logger lager.Logger, volumeId string, config map[st
 	mountPath := path.Join(dw.csiMountRootDir, dw.Spec.Name)
 
 	targetPath := path.Join(mountPath, volumeId)
-	volId := &csi.VolumeID{Values: map[string]string{"volume_name": volumeId}}
+	volHandle := &csi.VolumeHandle{Id: volumeId}
 
 	nodePlugin := dw.csiShim.NewNodeClient(conn)
 	nodeResponse, err := nodePlugin.NodePublishVolume(context.TODO(), &csi.NodePublishVolumeRequest{
 		Version:    csiVersion(),
-		VolumeId:   volId,
+		VolumeHandle:   volHandle,
 		TargetPath: targetPath,
 		VolumeCapability: &csi.VolumeCapability{
-			Value: &csi.VolumeCapability_Mount{Mount: &csi.VolumeCapability_MountVolume{MountFlags: []string{}}},
+			AccessType: &csi.VolumeCapability_Mount{
+				Mount: &csi.VolumeCapability_MountVolume{},
+			},
+			AccessMode: &csi.VolumeCapability_AccessMode{
+				csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER,
+			},
 		},
-		Readonly: false,
 	})
 
 	logger.Debug(fmt.Sprintf("nodeResponse: %#v", nodeResponse))

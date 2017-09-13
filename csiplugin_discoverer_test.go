@@ -17,8 +17,9 @@ import (
 	. "github.com/onsi/ginkgo"
 	"github.com/onsi/ginkgo/config"
 	. "github.com/onsi/gomega"
-	"github.com/paulcwarren/spec"
-	"github.com/paulcwarren/spec/csishim/csi_fake"
+	"code.cloudfoundry.org/csishim/csi_fake"
+	"github.com/container-storage-interface/spec/lib/go/csi"
+
 )
 
 var _ = Describe("CSIPluginDiscoverer", func() {

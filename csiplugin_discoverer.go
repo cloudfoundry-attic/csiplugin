@@ -8,8 +8,8 @@ import (
 	"code.cloudfoundry.org/goshims/osshim"
 	"code.cloudfoundry.org/lager"
 	"code.cloudfoundry.org/volman"
-	"github.com/paulcwarren/spec"
-	"github.com/paulcwarren/spec/csishim"
+	"github.com/container-storage-interface/spec/lib/go/csi"
+	"code.cloudfoundry.org/csishim"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 )

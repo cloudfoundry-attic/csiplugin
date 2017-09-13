@@ -10,13 +10,13 @@ import (
 	"code.cloudfoundry.org/goshims/osshim/os_fake"
 	"code.cloudfoundry.org/lager/lagertest"
 	"code.cloudfoundry.org/volman"
+	"code.cloudfoundry.org/csishim/csi_fake"
 	"github.com/Kaixiang/csiplugin"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	"github.com/onsi/gomega/gbytes"
-	"github.com/paulcwarren/spec"
-	"github.com/paulcwarren/spec/csishim/csi_fake"
-)
+	"github.com/container-storage-interface/spec/lib/go/csi"
+	)
 
 var _ = Describe("CsiPluginNode", func() {
 
@@ -65,6 +65,13 @@ var _ = Describe("CsiPluginNode", func() {
 			}, nil)
 		})
 
+		It("should mount the right volume", func() {
+			_, request, _ := fakeNodeClient.NodePublishVolumeArgsForCall(0)
+			Expect(request.GetVolumeHandle().GetId()).To(Equal("fakevolumeid"))
+			Expect(request.GetVolumeCapability().GetAccessType()).ToNot(BeNil())
+			Expect(request.GetVolumeCapability().GetAccessMode().GetMode()).To(Equal(csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER))
+		})
+
 		Context("When csi node server response some error", func() {
 			BeforeEach(func() {
 				fakeNodeClient.NodePublishVolumeReturns(&csi.NodePublishVolumeResponse{
@@ -110,6 +117,11 @@ var _ = Describe("CsiPluginNode", func() {
 				Expect(err).NotTo(HaveOccurred())
 				Expect(fakeNodeClient.NodeUnpublishVolumeCallCount()).To(Equal(1))
 				Expect(conn.CloseCallCount()).To(Equal(1))
+			})
+
+			It("should unmount the right volume", func() {
+				_, request, _ := fakeNodeClient.NodeUnpublishVolumeArgsForCall(0)
+				Expect(request.GetVolumeHandle().GetId()).To(Equal("fakevolumeid"))
 			})
 		})
 
