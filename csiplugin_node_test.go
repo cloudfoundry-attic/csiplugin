@@ -2,7 +2,6 @@ package csiplugin_test
 
 import (
 	"math/rand"
-	"os"
 	"sync"
 	"time"
 
@@ -16,7 +15,10 @@ import (
 	. "github.com/onsi/gomega"
 	"github.com/onsi/gomega/gbytes"
 	"github.com/container-storage-interface/spec/lib/go/csi"
-	)
+
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+)
 
 var _ = Describe("CsiPluginNode", func() {
 
@@ -58,34 +60,20 @@ var _ = Describe("CsiPluginNode", func() {
 		})
 
 		BeforeEach(func() {
-			fakeNodeClient.NodePublishVolumeReturns(&csi.NodePublishVolumeResponse{
-				Reply: &csi.NodePublishVolumeResponse_Result_{
-					Result: &csi.NodePublishVolumeResponse_Result{},
-				},
-			}, nil)
+			fakeNodeClient.NodePublishVolumeReturns(&csi.NodePublishVolumeResponse{}, nil)
 		})
 
 		It("should mount the right volume", func() {
 			_, request, _ := fakeNodeClient.NodePublishVolumeArgsForCall(0)
-			Expect(request.GetVolumeHandle().GetId()).To(Equal("fakevolumeid"))
+			Expect(request.GetVolumeId()).To(Equal("fakevolumeid"))
 			Expect(request.GetVolumeCapability().GetAccessType()).ToNot(BeNil())
 			Expect(request.GetVolumeCapability().GetAccessMode().GetMode()).To(Equal(csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER))
 		})
 
 		Context("When csi node server response some error", func() {
 			BeforeEach(func() {
-				fakeNodeClient.NodePublishVolumeReturns(&csi.NodePublishVolumeResponse{
-					Reply: &csi.NodePublishVolumeResponse_Error{
-						Error: &csi.Error{
-							Value: &csi.Error_NodePublishVolumeError_{
-								NodePublishVolumeError: &csi.Error_NodePublishVolumeError{
-									ErrorCode:        csi.Error_NodePublishVolumeError_MOUNT_ERROR,
-									ErrorDescription: "Error mounting volume",
-								},
-							},
-						},
-					},
-				}, nil)
+				ret := grpc.Errorf(codes.Internal, "Error mounting volume")
+				fakeNodeClient.NodePublishVolumeReturns(nil, ret)
 			})
 
 			It("report error and log it", func() {
@@ -106,11 +94,7 @@ var _ = Describe("CsiPluginNode", func() {
 
 		Context("When csi node server unmount successful", func() {
 			BeforeEach(func() {
-				fakeNodeClient.NodeUnpublishVolumeReturns(&csi.NodeUnpublishVolumeResponse{
-					Reply: &csi.NodeUnpublishVolumeResponse_Result_{
-						Result: &csi.NodeUnpublishVolumeResponse_Result{},
-					},
-				}, nil)
+				fakeNodeClient.NodeUnpublishVolumeReturns(&csi.NodeUnpublishVolumeResponse{}, nil)
 			})
 
 			It("should succeed", func() {
@@ -121,24 +105,14 @@ var _ = Describe("CsiPluginNode", func() {
 
 			It("should unmount the right volume", func() {
 				_, request, _ := fakeNodeClient.NodeUnpublishVolumeArgsForCall(0)
-				Expect(request.GetVolumeHandle().GetId()).To(Equal("fakevolumeid"))
+				Expect(request.GetVolumeId()).To(Equal("fakevolumeid"))
 			})
 		})
 
 		Context("When csi node server unmount unsuccessful", func() {
 			BeforeEach(func() {
-				fakeNodeClient.NodeUnpublishVolumeReturns(&csi.NodeUnpublishVolumeResponse{
-					Reply: &csi.NodeUnpublishVolumeResponse_Error{
-						Error: &csi.Error{
-							Value: &csi.Error_NodeUnpublishVolumeError_{
-								NodeUnpublishVolumeError: &csi.Error_NodeUnpublishVolumeError{
-									ErrorCode:        csi.Error_NodeUnpublishVolumeError_UNMOUNT_ERROR,
-									ErrorDescription: "Error unmounting volume",
-								},
-							},
-						},
-					},
-				}, nil)
+				ret := grpc.Errorf(codes.Internal, "Error unmounting volume")
+				fakeNodeClient.NodeUnpublishVolumeReturns(nil, ret)
 			})
 
 			It("report error and log it", func() {
@@ -156,16 +130,8 @@ var _ = Describe("CsiPluginNode", func() {
 		)
 		BeforeEach(func() {
 			volumeId = "fakevolumeid"
-			fakeNodeClient.NodePublishVolumeReturns(&csi.NodePublishVolumeResponse{
-				Reply: &csi.NodePublishVolumeResponse_Result_{
-					Result: &csi.NodePublishVolumeResponse_Result{},
-				},
-			}, nil)
-			fakeNodeClient.NodeUnpublishVolumeReturns(&csi.NodeUnpublishVolumeResponse{
-				Reply: &csi.NodeUnpublishVolumeResponse_Result_{
-					Result: &csi.NodeUnpublishVolumeResponse_Result{},
-				},
-			}, nil)
+			fakeNodeClient.NodePublishVolumeReturns(&csi.NodePublishVolumeResponse{}, nil)
+			fakeNodeClient.NodeUnpublishVolumeReturns(&csi.NodeUnpublishVolumeResponse{}, nil)
 		})
 
 		Context("when a new volume get mounted", func() {
@@ -263,19 +229,3 @@ var _ = Describe("CsiPluginNode", func() {
 		})
 	})
 })
-
-type FakeFileInfo struct {
-	FileMode os.FileMode
-}
-
-func (FakeFileInfo) Name() string                { return "" }
-func (FakeFileInfo) Size() int64                 { return 0 }
-func (fs *FakeFileInfo) Mode() os.FileMode       { return fs.FileMode }
-func (fs *FakeFileInfo) StubMode(fm os.FileMode) { fs.FileMode = fm }
-func (FakeFileInfo) ModTime() time.Time          { return time.Time{} }
-func (FakeFileInfo) IsDir() bool                 { return false }
-func (FakeFileInfo) Sys() interface{}            { return nil }
-
-func newFakeFileInfo() *FakeFileInfo {
-	return &FakeFileInfo{}
-}

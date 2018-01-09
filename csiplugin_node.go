@@ -1,7 +1,6 @@
 package csiplugin
 
 import (
-	"errors"
 	"fmt"
 	"path"
 	"reflect"
@@ -22,8 +21,8 @@ import (
 func csiVersion() *csi.Version {
 	return &csi.Version{
 		Major: 0,
-		Minor: 0,
-		Patch: 1,
+		Minor: 1,
+		Patch: 0,
 	}
 }
 
@@ -52,20 +51,19 @@ func (dw *nodeWrapper) Unmount(logger lager.Logger, volumeId string) error {
 
 	mountPath := path.Join(dw.csiMountRootDir, dw.Spec.Name)
 	targetPath := path.Join(mountPath, volumeId)
-	volHandle := &csi.VolumeHandle{Id: volumeId}
 
 	nodePlugin := dw.csiShim.NewNodeClient(conn)
 	nodeResponse, err := nodePlugin.NodeUnpublishVolume(context.TODO(), &csi.NodeUnpublishVolumeRequest{
 		Version:    csiVersion(),
-		VolumeHandle:   volHandle,
+		VolumeId:   volumeId,
 		TargetPath: targetPath,
 	})
 
 	logger.Debug(fmt.Sprintf("nodeResponse: %#v", nodeResponse))
 
-	if nodeResponse.GetError() != nil {
-		logger.Error("node-response-error", err, lager.Data{"Error": nodeResponse.GetError().String()})
-		return errors.New(nodeResponse.GetError().String())
+	if err != nil {
+		logger.Error("node-response-error", err)
+		return err
 	}
 
 	dw.volumesMutex.Lock()
@@ -98,12 +96,11 @@ func (dw *nodeWrapper) Mount(logger lager.Logger, volumeId string, config map[st
 	mountPath := path.Join(dw.csiMountRootDir, dw.Spec.Name)
 
 	targetPath := path.Join(mountPath, volumeId)
-	volHandle := &csi.VolumeHandle{Id: volumeId}
 
 	nodePlugin := dw.csiShim.NewNodeClient(conn)
 	nodeResponse, err := nodePlugin.NodePublishVolume(context.TODO(), &csi.NodePublishVolumeRequest{
 		Version:    csiVersion(),
-		VolumeHandle:   volHandle,
+		VolumeId:   volumeId,
 		TargetPath: targetPath,
 		VolumeCapability: &csi.VolumeCapability{
 			AccessType: &csi.VolumeCapability_Mount{
@@ -117,9 +114,9 @@ func (dw *nodeWrapper) Mount(logger lager.Logger, volumeId string, config map[st
 
 	logger.Debug(fmt.Sprintf("nodeResponse: %#v", nodeResponse))
 
-	if nodeResponse.GetError() != nil {
-		logger.Error("node-response-error", err, lager.Data{"Error": nodeResponse.GetError().String()})
-		return volman.MountResponse{}, errors.New(nodeResponse.GetError().String())
+	if err != nil {
+		logger.Error("node-response-error", err)
+		return volman.MountResponse{}, err
 	}
 
 	dw.volumesMutex.Lock()
