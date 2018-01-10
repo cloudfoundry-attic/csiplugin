@@ -1,7 +1,6 @@
 package csiplugin
 
 import (
-	"fmt"
 	"path"
 	"reflect"
 	"sync"
@@ -59,7 +58,7 @@ func (dw *nodeWrapper) Unmount(logger lager.Logger, volumeId string) error {
 		TargetPath: targetPath,
 	})
 
-	logger.Debug(fmt.Sprintf("nodeResponse: %#v", nodeResponse))
+	logger.Debug("node-response", lager.Data{"nodeResponse": nodeResponse})
 
 	if err != nil {
 		logger.Error("node-response-error", err)
@@ -76,7 +75,6 @@ func (dw *nodeWrapper) Unmount(logger lager.Logger, volumeId string) error {
 			delete(dw.volumes, volumeId)
 		}
 	}
-	logger.Debug(fmt.Sprintf("reference count: %#v", dw.volumes))
 
 	return nil
 }
@@ -112,7 +110,7 @@ func (dw *nodeWrapper) Mount(logger lager.Logger, volumeId string, config map[st
 		},
 	})
 
-	logger.Debug(fmt.Sprintf("nodeResponse: %#v", nodeResponse))
+	logger.Debug("node-response", lager.Data{"nodeResponse": nodeResponse})
 
 	if err != nil {
 		logger.Error("node-response-error", err)
@@ -128,7 +126,6 @@ func (dw *nodeWrapper) Mount(logger lager.Logger, volumeId string, config map[st
 		dw.volumes[volumeId] = 1
 	}
 
-	logger.Debug(fmt.Sprintf("reference count: %#v", dw.volumes))
 	return volman.MountResponse{Path: targetPath}, nil
 }
 
@@ -136,8 +133,6 @@ func (dw *nodeWrapper) ListVolumes(logger lager.Logger) ([]string, error) {
 	logger = logger.Session("listvolumes")
 	logger.Info("start")
 	defer logger.Info("end")
-
-	logger.Debug(fmt.Sprintf("reference count: %#v", dw.volumes))
 
 	dw.volumesMutex.RLock()
 	defer dw.volumesMutex.RUnlock()
