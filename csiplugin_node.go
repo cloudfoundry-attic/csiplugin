@@ -4,6 +4,8 @@ import (
 	"path"
 	"reflect"
 	"sync"
+	"errors"
+	"fmt"
 
 	"golang.org/x/net/context"
 
@@ -96,9 +98,21 @@ func (dw *nodeWrapper) Mount(logger lager.Logger, volumeId string, config map[st
 	targetPath := path.Join(mountPath, volumeId)
 
 	nodePlugin := dw.csiShim.NewNodeClient(conn)
+	publishRequestVolID, ok := config["id"].(string)
+	if !ok {
+		err := errors.New(fmt.Sprintf("type assertion on VolumeId: not string, but %T", config["id"]))
+		logger.Error("bind-config", err)
+		return volman.MountResponse{}, err
+	}
+	volAttrs, ok := config["attributes"].(map[string]string)
+	if !ok {
+		err := errors.New(fmt.Sprintf("type assertion on VolumeAttributes: not map[string]string, but %T", config["attributes"]))
+		logger.Error("bind-config", err)
+		return volman.MountResponse{}, err
+	}
 	nodeResponse, err := nodePlugin.NodePublishVolume(context.TODO(), &csi.NodePublishVolumeRequest{
 		Version:    csiVersion(),
-		VolumeId:   volumeId,
+		VolumeId:   publishRequestVolID,
 		TargetPath: targetPath,
 		VolumeCapability: &csi.VolumeCapability{
 			AccessType: &csi.VolumeCapability_Mount{
@@ -108,6 +122,7 @@ func (dw *nodeWrapper) Mount(logger lager.Logger, volumeId string, config map[st
 				csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER,
 			},
 		},
+		VolumeAttributes: volAttrs,
 	})
 
 	logger.Debug("node-response", lager.Data{"nodeResponse": nodeResponse})

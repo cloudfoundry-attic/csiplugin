@@ -34,6 +34,7 @@ var _ = Describe("CsiPluginNode", func() {
 		fakeOs         *os_fake.FakeOs
 		mountResponse  volman.MountResponse
 		volumesRootDir string
+	  config         map[string]interface{}
 	)
 
 	BeforeEach(func() {
@@ -52,11 +53,12 @@ var _ = Describe("CsiPluginNode", func() {
 		csiPlugin = csiplugin.NewCsiPlugin(fakeNodeClient, fakePluginSpec, fakeGrpc, fakeCsi, fakeOs, volumesRootDir)
 		conn = new(grpc_fake.FakeClientConn)
 		fakeGrpc.DialReturns(conn, nil)
+		config = map[string]interface{}{"id": "some-id", "attributes": map[string]string{"foo":"bar"}}
 	})
 
 	Describe("#Mount", func() {
 		JustBeforeEach(func() {
-			mountResponse, err = csiPlugin.Mount(logger, "fakevolumeid", map[string]interface{}{})
+			mountResponse, err = csiPlugin.Mount(logger, "fakevolumeid", config)
 		})
 
 		BeforeEach(func() {
@@ -65,9 +67,10 @@ var _ = Describe("CsiPluginNode", func() {
 
 		It("should mount the right volume", func() {
 			_, request, _ := fakeNodeClient.NodePublishVolumeArgsForCall(0)
-			Expect(request.GetVolumeId()).To(Equal("fakevolumeid"))
+			Expect(request.GetVolumeId()).To(Equal("some-id"))
 			Expect(request.GetVolumeCapability().GetAccessType()).ToNot(BeNil())
 			Expect(request.GetVolumeCapability().GetAccessMode().GetMode()).To(Equal(csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER))
+			Expect(request.GetVolumeAttributes()).To(Equal(map[string]string{"foo":"bar"}))
 		})
 
 		Context("When csi node server response some error", func() {
@@ -85,6 +88,28 @@ var _ = Describe("CsiPluginNode", func() {
 				Expect(conn.CloseCallCount()).To(Equal(1))
 			})
 		})
+
+		Context("when the id from the bind config is the wrong type", func() {
+			BeforeEach(func() {
+				config = map[string]interface{}{"id": 123}
+			})
+
+			It("should fail with a type assertion error", func() {
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(Equal("type assertion on VolumeId: not string, but int"))
+			})
+		})
+
+    Context("when attributes from the bind config is the wrong type", func() {
+      BeforeEach(func() {
+        config = map[string]interface{}{"id": "abcd", "attributes": map[string]int{}}
+      })
+
+      It("should fail with a type assertion error", func() {
+        Expect(err).To(HaveOccurred())
+        Expect(err.Error()).To(Equal("type assertion on VolumeAttributes: not map[string]string, but map[string]int"))
+      })
+    })
 	})
 
 	Describe("#Unmount", func() {
@@ -140,7 +165,7 @@ var _ = Describe("CsiPluginNode", func() {
 			)
 
 			JustBeforeEach(func() {
-				_, err = csiPlugin.Mount(logger, volumeId, map[string]interface{}{})
+				_, err = csiPlugin.Mount(logger, volumeId, config)
 				Expect(err).ToNot(HaveOccurred())
 			})
 
@@ -153,7 +178,7 @@ var _ = Describe("CsiPluginNode", func() {
 
 			Context("when the same volume is mounted again", func() {
 				JustBeforeEach(func() {
-					_, err = csiPlugin.Mount(logger, volumeId, map[string]interface{}{})
+					_, err = csiPlugin.Mount(logger, volumeId, config)
 					Expect(err).ToNot(HaveOccurred())
 				})
 
@@ -196,7 +221,7 @@ var _ = Describe("CsiPluginNode", func() {
 					defer GinkgoRecover()
 					defer wg.Done()
 					for i := 0; i < 1000; i++ {
-						_, err := csiPlugin.Mount(logger, volumeId, map[string]interface{}{})
+						_, err := csiPlugin.Mount(logger, volumeId, config)
 						Expect(err).NotTo(HaveOccurred())
 
 						r := rand.Intn(10)
