@@ -53,12 +53,12 @@ var _ = Describe("CsiPluginNode", func() {
 		csiPlugin = csiplugin.NewCsiPlugin(fakeNodeClient, fakePluginSpec, fakeGrpc, fakeCsi, fakeOs, volumesRootDir)
 		conn = new(grpc_fake.FakeClientConn)
 		fakeGrpc.DialReturns(conn, nil)
-		config = map[string]interface{}{"id": "some-id", "attributes": map[string]string{"foo":"bar"}}
+		config = map[string]interface{}{"id": "fakevolumeid", "attributes": map[string]string{"foo":"bar"}}
 	})
 
 	Describe("#Mount", func() {
 		JustBeforeEach(func() {
-			mountResponse, err = csiPlugin.Mount(logger, "fakevolumeid", config)
+			mountResponse, err = csiPlugin.Mount(logger, "irrelevant-id", config)
 		})
 
 		BeforeEach(func() {
@@ -67,7 +67,7 @@ var _ = Describe("CsiPluginNode", func() {
 
 		It("should mount the right volume", func() {
 			_, request, _ := fakeNodeClient.NodePublishVolumeArgsForCall(0)
-			Expect(request.GetVolumeId()).To(Equal("some-id"))
+			Expect(request.GetVolumeId()).To(Equal("fakevolumeid"))
 			Expect(request.GetVolumeCapability().GetAccessType()).ToNot(BeNil())
 			Expect(request.GetVolumeCapability().GetAccessMode().GetMode()).To(Equal(csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER))
 			Expect(request.GetVolumeAttributes()).To(Equal(map[string]string{"foo":"bar"}))
@@ -220,8 +220,9 @@ var _ = Describe("CsiPluginNode", func() {
 				smash := func(volumeId string) {
 					defer GinkgoRecover()
 					defer wg.Done()
-					for i := 0; i < 1000; i++ {
-						_, err := csiPlugin.Mount(logger, volumeId, config)
+          smashConfig := map[string]interface{}{"id": volumeId, "attributes": map[string]string{"foo":"bar"}}
+          for i := 0; i < 1000; i++ {
+						_, err := csiPlugin.Mount(logger, "irrelevant-id", smashConfig)
 						Expect(err).NotTo(HaveOccurred())
 
 						r := rand.Intn(10)

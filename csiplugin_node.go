@@ -135,10 +135,10 @@ func (dw *nodeWrapper) Mount(logger lager.Logger, volumeId string, config map[st
 	dw.volumesMutex.Lock()
 	defer dw.volumesMutex.Unlock()
 
-	if count, ok := dw.volumes[volumeId]; ok {
-		dw.volumes[volumeId] = count + 1
+	if count, ok := dw.volumes[publishRequestVolID]; ok {
+		dw.volumes[publishRequestVolID] = count + 1
 	} else {
-		dw.volumes[volumeId] = 1
+		dw.volumes[publishRequestVolID] = 1
 	}
 
 	return volman.MountResponse{Path: targetPath}, nil
