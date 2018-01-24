@@ -1,20 +1,21 @@
 package csiplugin_test
 
 import (
+	"fmt"
 	"math/rand"
 	"sync"
 	"time"
 
+	"code.cloudfoundry.org/csishim/csi_fake"
 	"code.cloudfoundry.org/goshims/grpcshim/grpc_fake"
 	"code.cloudfoundry.org/goshims/osshim/os_fake"
 	"code.cloudfoundry.org/lager/lagertest"
 	"code.cloudfoundry.org/volman"
-	"code.cloudfoundry.org/csishim/csi_fake"
 	"github.com/Kaixiang/csiplugin"
+	"github.com/container-storage-interface/spec/lib/go/csi"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	"github.com/onsi/gomega/gbytes"
-	"github.com/container-storage-interface/spec/lib/go/csi"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -34,7 +35,7 @@ var _ = Describe("CsiPluginNode", func() {
 		fakeOs         *os_fake.FakeOs
 		mountResponse  volman.MountResponse
 		volumesRootDir string
-	  config         map[string]interface{}
+		config         map[string]interface{}
 	)
 
 	BeforeEach(func() {
@@ -53,7 +54,7 @@ var _ = Describe("CsiPluginNode", func() {
 		csiPlugin = csiplugin.NewCsiPlugin(fakeNodeClient, fakePluginSpec, fakeGrpc, fakeCsi, fakeOs, volumesRootDir)
 		conn = new(grpc_fake.FakeClientConn)
 		fakeGrpc.DialReturns(conn, nil)
-		config = map[string]interface{}{"id": "fakevolumeid", "attributes": map[string]string{"foo":"bar"}}
+		config = map[string]interface{}{"id": "fakevolumeid", "attributes": map[string]string{"foo": "bar"}}
 	})
 
 	Describe("#Mount", func() {
@@ -70,7 +71,7 @@ var _ = Describe("CsiPluginNode", func() {
 			Expect(request.GetVolumeId()).To(Equal("fakevolumeid"))
 			Expect(request.GetVolumeCapability().GetAccessType()).ToNot(BeNil())
 			Expect(request.GetVolumeCapability().GetAccessMode().GetMode()).To(Equal(csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER))
-			Expect(request.GetVolumeAttributes()).To(Equal(map[string]string{"foo":"bar"}))
+			Expect(request.GetVolumeAttributes()).To(Equal(map[string]string{"foo": "bar"}))
 		})
 
 		Context("When csi node server response some error", func() {
@@ -100,51 +101,70 @@ var _ = Describe("CsiPluginNode", func() {
 			})
 		})
 
-    Context("when attributes from the bind config is the wrong type", func() {
-      BeforeEach(func() {
-        config = map[string]interface{}{"id": "abcd", "attributes": map[string]int{}}
-      })
+		Context("when attributes from the bind config is the wrong type", func() {
+			BeforeEach(func() {
+				config = map[string]interface{}{"id": "abcd", "attributes": map[string]int{}}
+			})
 
-      It("should fail with a type assertion error", func() {
-        Expect(err).To(HaveOccurred())
-        Expect(err.Error()).To(Equal("type assertion on VolumeAttributes: not map[string]string, but map[string]int"))
-      })
-    })
+			It("should fail with a type assertion error", func() {
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(Equal("type assertion on VolumeAttributes: not map[string]string, but map[string]int"))
+			})
+		})
 	})
 
 	Describe("#Unmount", func() {
-		JustBeforeEach(func() {
-			err = csiPlugin.Unmount(logger, "fakevolumeid")
-		})
-
-		Context("When csi node server unmount successful", func() {
-			BeforeEach(func() {
-				fakeNodeClient.NodeUnpublishVolumeReturns(&csi.NodeUnpublishVolumeResponse{}, nil)
+		Context("when volume id doesn't have a csi volume attached", func() {
+			JustBeforeEach(func() {
+				err = csiPlugin.Unmount(logger, "relevant-id")
 			})
 
-			It("should succeed", func() {
-				Expect(err).NotTo(HaveOccurred())
-				Expect(fakeNodeClient.NodeUnpublishVolumeCallCount()).To(Equal(1))
-				Expect(conn.CloseCallCount()).To(Equal(1))
-			})
-
-			It("should unmount the right volume", func() {
-				_, request, _ := fakeNodeClient.NodeUnpublishVolumeArgsForCall(0)
-				Expect(request.GetVolumeId()).To(Equal("fakevolumeid"))
-			})
-		})
-
-		Context("When csi node server unmount unsuccessful", func() {
-			BeforeEach(func() {
-				ret := grpc.Errorf(codes.Internal, "Error unmounting volume")
-				fakeNodeClient.NodeUnpublishVolumeReturns(nil, ret)
-			})
-
-			It("report error and log it", func() {
+			It("should fail", func() {
 				Expect(err).To(HaveOccurred())
-				Expect(fakeNodeClient.NodeUnpublishVolumeCallCount()).To(Equal(1))
-				Expect(logger.Buffer()).To(gbytes.Say("Error unmounting volume"))
-				Expect(conn.CloseCallCount()).To(Equal(1))
+			})
+		})
+
+		Context("when volume id have a csi volume attached", func() {
+			BeforeEach(func() {
+				config = map[string]interface{}{"id": "fakevolumeid", "attributes": map[string]string{"foo": "bar"}}
+				_, err = csiPlugin.Mount(logger, "relevant-id", config)
+				Expect(err).NotTo(HaveOccurred())
+				fakeNodeClient.NodePublishVolumeReturns(&csi.NodePublishVolumeResponse{}, nil)
+			})
+
+			JustBeforeEach(func() {
+				err = csiPlugin.Unmount(logger, "relevant-id")
+			})
+
+			Context("When csi node server unmount successful", func() {
+				BeforeEach(func() {
+					fakeNodeClient.NodeUnpublishVolumeReturns(&csi.NodeUnpublishVolumeResponse{}, nil)
+				})
+
+				It("should succeed", func() {
+					Expect(err).NotTo(HaveOccurred())
+					Expect(fakeNodeClient.NodeUnpublishVolumeCallCount()).To(Equal(1))
+					Expect(conn.CloseCallCount()).To(Equal(2))
+				})
+
+				It("should unmount the right volume", func() {
+					_, request, _ := fakeNodeClient.NodeUnpublishVolumeArgsForCall(0)
+					Expect(request.GetVolumeId()).To(Equal("fakevolumeid"))
+				})
+			})
+
+			Context("When csi node server unmount unsuccessful", func() {
+				BeforeEach(func() {
+					ret := grpc.Errorf(codes.Internal, "Error unmounting volume")
+					fakeNodeClient.NodeUnpublishVolumeReturns(nil, ret)
+				})
+
+				It("report error and log it", func() {
+					Expect(err).To(HaveOccurred())
+					Expect(fakeNodeClient.NodeUnpublishVolumeCallCount()).To(Equal(1))
+					Expect(logger.Buffer()).To(gbytes.Say("Error unmounting volume"))
+					Expect(conn.CloseCallCount()).To(Equal(2))
+				})
 			})
 		})
 	})
@@ -153,6 +173,7 @@ var _ = Describe("CsiPluginNode", func() {
 		var (
 			volumeId string
 		)
+
 		BeforeEach(func() {
 			volumeId = "fakevolumeid"
 			fakeNodeClient.NodePublishVolumeReturns(&csi.NodePublishVolumeResponse{}, nil)
@@ -165,6 +186,7 @@ var _ = Describe("CsiPluginNode", func() {
 			)
 
 			JustBeforeEach(func() {
+
 				_, err = csiPlugin.Mount(logger, volumeId, config)
 				Expect(err).ToNot(HaveOccurred())
 			})
@@ -217,18 +239,18 @@ var _ = Describe("CsiPluginNode", func() {
 
 				wg.Add(8)
 
-				smash := func(volumeId string) {
+				smash := func(csiVolumeId string) {
 					defer GinkgoRecover()
 					defer wg.Done()
-          smashConfig := map[string]interface{}{"id": volumeId, "attributes": map[string]string{"foo":"bar"}}
-          for i := 0; i < 1000; i++ {
-						_, err := csiPlugin.Mount(logger, "irrelevant-id", smashConfig)
+					smashConfig := map[string]interface{}{"id": csiVolumeId, "attributes": map[string]string{"foo": "bar"}}
+					for i := 0; i < 1000; i++ {
+						_, err := csiPlugin.Mount(logger, fmt.Sprintf("binding-id-%s", csiVolumeId), smashConfig)
 						Expect(err).NotTo(HaveOccurred())
 
 						r := rand.Intn(10)
 						time.Sleep(time.Duration(r) * time.Microsecond)
 
-						err = csiPlugin.Unmount(logger, volumeId)
+						err = csiPlugin.Unmount(logger, fmt.Sprintf("binding-id-%s", csiVolumeId))
 						Expect(err).NotTo(HaveOccurred())
 
 						r = rand.Intn(10)

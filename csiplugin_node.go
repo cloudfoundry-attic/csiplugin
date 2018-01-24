@@ -1,21 +1,21 @@
 package csiplugin
 
 import (
+	"errors"
+	"fmt"
 	"path"
 	"reflect"
 	"sync"
-	"errors"
-	"fmt"
 
 	"golang.org/x/net/context"
 
 	"google.golang.org/grpc"
 
+	"code.cloudfoundry.org/csishim"
 	"code.cloudfoundry.org/goshims/grpcshim"
 	"code.cloudfoundry.org/goshims/osshim"
 	"code.cloudfoundry.org/lager"
 	"code.cloudfoundry.org/volman"
-	"code.cloudfoundry.org/csishim"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 )
 
@@ -27,13 +27,18 @@ func csiVersion() *csi.Version {
 	}
 }
 
+type volumeInfo struct {
+	csiVolumeId string
+	count       int
+}
+
 type nodeWrapper struct {
 	Impl            interface{}
 	Spec            volman.PluginSpec
 	grpcShim        grpcshim.Grpc
 	csiShim         csishim.Csi
 	osShim          osshim.Os
-	volumes         map[string]int
+	volumes         map[string]*volumeInfo
 	volumesMutex    sync.RWMutex
 	csiMountRootDir string
 }
@@ -54,28 +59,30 @@ func (dw *nodeWrapper) Unmount(logger lager.Logger, volumeId string) error {
 	targetPath := path.Join(mountPath, volumeId)
 
 	nodePlugin := dw.csiShim.NewNodeClient(conn)
-	nodeResponse, err := nodePlugin.NodeUnpublishVolume(context.TODO(), &csi.NodeUnpublishVolumeRequest{
-		Version:    csiVersion(),
-		VolumeId:   volumeId,
-		TargetPath: targetPath,
-	})
-
-	logger.Debug("node-response", lager.Data{"nodeResponse": nodeResponse})
-
-	if err != nil {
-		logger.Error("node-response-error", err)
-		return err
-	}
-
+	var csiVolumeId string
 	dw.volumesMutex.Lock()
 	defer dw.volumesMutex.Unlock()
 
-	if count, ok := dw.volumes[volumeId]; ok {
+	if volInfo, ok := dw.volumes[volumeId]; ok {
+		csiVolumeId = volInfo.csiVolumeId
+		count := volInfo.count
 		if count > 1 {
-			dw.volumes[volumeId] = count - 1
+			volInfo.count = volInfo.count - 1
 		} else {
+			nodeResponse, err := nodePlugin.NodeUnpublishVolume(context.TODO(), &csi.NodeUnpublishVolumeRequest{
+				Version:    csiVersion(),
+				VolumeId:   csiVolumeId,
+				TargetPath: targetPath,
+			})
+			logger.Debug("node-response", lager.Data{"nodeResponse": nodeResponse})
+			if err != nil {
+				logger.Error("node-response-error", err)
+				return err
+			}
 			delete(dw.volumes, volumeId)
 		}
+	} else {
+		return errors.New(fmt.Sprintf("unknown volumeId: %s", volumeId))
 	}
 
 	return nil
@@ -135,10 +142,14 @@ func (dw *nodeWrapper) Mount(logger lager.Logger, volumeId string, config map[st
 	dw.volumesMutex.Lock()
 	defer dw.volumesMutex.Unlock()
 
-	if count, ok := dw.volumes[publishRequestVolID]; ok {
-		dw.volumes[publishRequestVolID] = count + 1
+	if volInfo, ok := dw.volumes[volumeId]; ok {
+		volInfo.csiVolumeId = publishRequestVolID
+		volInfo.count = volInfo.count + 1
 	} else {
-		dw.volumes[publishRequestVolID] = 1
+		dw.volumes[volumeId] = &volumeInfo{
+			csiVolumeId: publishRequestVolID,
+			count:       1,
+		}
 	}
 
 	return volman.MountResponse{Path: targetPath}, nil
@@ -178,7 +189,7 @@ func NewCsiPlugin(plugin csi.NodeClient, pluginSpec volman.PluginSpec, grpcShim 
 		grpcShim:        grpcShim,
 		csiShim:         csiShim,
 		osShim:          osShim,
-		volumes:         map[string]int{},
+		volumes:         map[string]*volumeInfo{},
 		csiMountRootDir: csiMountRootDir,
 	}
 }
