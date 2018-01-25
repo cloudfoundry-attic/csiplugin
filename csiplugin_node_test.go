@@ -244,14 +244,21 @@ var _ = Describe("CsiPluginNode", func() {
 					defer wg.Done()
 					smashConfig := map[string]interface{}{"id": csiVolumeId, "attributes": map[string]string{"foo": "bar"}}
 					for i := 0; i < 1000; i++ {
-						_, err := csiPlugin.Mount(logger, fmt.Sprintf("binding-id-%s", csiVolumeId), smashConfig)
-						Expect(err).NotTo(HaveOccurred())
+
+						// let's test reference counting whilst we are at it!
+						mountCount := rand.Intn(9) + 1
+						for i := 0; i < mountCount; i++ {
+							_, err := csiPlugin.Mount(logger, fmt.Sprintf("binding-id-%s", csiVolumeId), smashConfig)
+							Expect(err).NotTo(HaveOccurred())
+						}
 
 						r := rand.Intn(10)
 						time.Sleep(time.Duration(r) * time.Microsecond)
 
-						err = csiPlugin.Unmount(logger, fmt.Sprintf("binding-id-%s", csiVolumeId))
-						Expect(err).NotTo(HaveOccurred())
+						for i := 0; i < mountCount; i++ {
+							err = csiPlugin.Unmount(logger, fmt.Sprintf("binding-id-%s", csiVolumeId))
+							Expect(err).NotTo(HaveOccurred())
+						}
 
 						r = rand.Intn(10)
 						time.Sleep(time.Duration(r) * time.Microsecond)
@@ -273,7 +280,11 @@ var _ = Describe("CsiPluginNode", func() {
 				volumes, err := csiPlugin.ListVolumes(logger)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(len(volumes)).To(Equal(0))
+
+				Expect(fakeNodeClient.NodeUnpublishVolumeCallCount()).To(Equal(1000 * 8))
+
 			})
+
 		})
 	})
 })
