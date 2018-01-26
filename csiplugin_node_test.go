@@ -248,16 +248,16 @@ var _ = Describe("CsiPluginNode", func() {
 						// let's test reference counting whilst we are at it!
 						mountCount := rand.Intn(9) + 1
 						for i := 0; i < mountCount; i++ {
-							_, err := csiPlugin.Mount(logger, fmt.Sprintf("binding-id-%s", csiVolumeId), smashConfig)
-							Expect(err).NotTo(HaveOccurred())
+							_, errM := csiPlugin.Mount(logger, fmt.Sprintf("binding-id-%s", csiVolumeId), smashConfig)
+							Expect(errM).NotTo(HaveOccurred())
 						}
 
 						r := rand.Intn(10)
 						time.Sleep(time.Duration(r) * time.Microsecond)
 
 						for i := 0; i < mountCount; i++ {
-							err = csiPlugin.Unmount(logger, fmt.Sprintf("binding-id-%s", csiVolumeId))
-							Expect(err).NotTo(HaveOccurred())
+							errU := csiPlugin.Unmount(logger, fmt.Sprintf("binding-id-%s", csiVolumeId))
+							Expect(errU).NotTo(HaveOccurred())
 						}
 
 						r = rand.Intn(10)

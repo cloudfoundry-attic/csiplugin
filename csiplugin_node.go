@@ -54,14 +54,13 @@ func (dw *nodeWrapper) Unmount(logger lager.Logger, volumeId string) error {
 		logger.Error("grpc-dial", err, lager.Data{"address": dw.Spec.Address})
 		return err
 	}
-
-	mountPath := path.Join(dw.csiMountRootDir, dw.Spec.Name)
-	targetPath := path.Join(mountPath, volumeId)
-
 	nodePlugin := dw.csiShim.NewNodeClient(conn)
 	var csiVolumeId string
 	dw.volumesMutex.Lock()
 	defer dw.volumesMutex.Unlock()
+
+	mountPath := path.Join(dw.csiMountRootDir, dw.Spec.Name)
+	targetPath := path.Join(mountPath, volumeId)
 
 	if volInfo, ok := dw.volumes[volumeId]; ok {
 		csiVolumeId = volInfo.csiVolumeId
