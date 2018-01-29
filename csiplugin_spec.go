@@ -1,11 +1,12 @@
 package csiplugin
 
 import (
-	"code.cloudfoundry.org/lager"
 	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
+
+	"code.cloudfoundry.org/lager"
 )
 
 func WriteSpec(logger lager.Logger, pluginsDirectory string, spec CsiPluginSpec) error {
