@@ -111,6 +111,16 @@ var _ = Describe("CsiPluginNode", func() {
 				Expect(err.Error()).To(Equal("type assertion on VolumeAttributes: not map[string]string, but map[string]int"))
 			})
 		})
+
+		Context("when the attributes are nil", func() {
+			BeforeEach(func() {
+				config = map[string]interface{}{"id": "abcd", "attributes": nil}
+			})
+
+			It("should succeed", func() {
+				Expect(err).ToNot(HaveOccurred())
+			})
+		})
 	})
 
 	Describe("#Unmount", func() {

@@ -110,12 +110,18 @@ func (dw *nodeWrapper) Mount(logger lager.Logger, volumeId string, config map[st
 		logger.Error("bind-config", err)
 		return volman.MountResponse{}, err
 	}
-	volAttrs, ok := config["attributes"].(map[string]string)
-	if !ok {
-		err := errors.New(fmt.Sprintf("type assertion on VolumeAttributes: not map[string]string, but %T", config["attributes"]))
-		logger.Error("bind-config", err)
-		return volman.MountResponse{}, err
+
+	var volAttrs map[string]string
+	if config["attributes"] != nil {
+
+		volAttrs, ok = config["attributes"].(map[string]string)
+		if !ok {
+			err := errors.New(fmt.Sprintf("type assertion on VolumeAttributes: not map[string]string, but %T", config["attributes"]))
+			logger.Error("bind-config", err)
+			return volman.MountResponse{}, err
+		}
 	}
+
 	nodeResponse, err := nodePlugin.NodePublishVolume(context.TODO(), &csi.NodePublishVolumeRequest{
 		Version:    csiVersion(),
 		VolumeId:   publishRequestVolID,
