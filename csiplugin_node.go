@@ -16,16 +16,8 @@ import (
 	"code.cloudfoundry.org/goshims/osshim"
 	"code.cloudfoundry.org/lager"
 	"code.cloudfoundry.org/volman"
-	"github.com/container-storage-interface/spec/lib/go/csi"
+	"github.com/container-storage-interface/spec/lib/go/csi/v0"
 )
-
-func csiVersion() *csi.Version {
-	return &csi.Version{
-		Major: 0,
-		Minor: 1,
-		Patch: 0,
-	}
-}
 
 type volumeInfo struct {
 	csiVolumeId string
@@ -69,7 +61,6 @@ func (dw *nodeWrapper) Unmount(logger lager.Logger, volumeId string) error {
 			volInfo.count = volInfo.count - 1
 		} else {
 			nodeResponse, err := nodePlugin.NodeUnpublishVolume(context.TODO(), &csi.NodeUnpublishVolumeRequest{
-				Version:    csiVersion(),
 				VolumeId:   csiVolumeId,
 				TargetPath: targetPath,
 			})
@@ -123,7 +114,6 @@ func (dw *nodeWrapper) Mount(logger lager.Logger, volumeId string, config map[st
 	}
 
 	nodeResponse, err := nodePlugin.NodePublishVolume(context.TODO(), &csi.NodePublishVolumeRequest{
-		Version:    csiVersion(),
 		VolumeId:   publishRequestVolID,
 		TargetPath: targetPath,
 		VolumeCapability: &csi.VolumeCapability{
