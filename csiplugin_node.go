@@ -1,6 +1,7 @@
 package csiplugin
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"path"
@@ -82,6 +83,7 @@ func (dw *nodeWrapper) Mount(logger lager.Logger, volumeId string, config map[st
 	logger = logger.Session("mount")
 	logger.Info("start")
 	defer logger.Info("end")
+	logger.Debug("mount-volume", lager.Data{"config": config})
 
 	conn, err := dw.grpcShim.Dial(dw.Spec.Address, grpc.WithInsecure())
 	defer conn.Close()
@@ -105,10 +107,15 @@ func (dw *nodeWrapper) Mount(logger lager.Logger, volumeId string, config map[st
 	var volAttrs map[string]string
 	if config["attributes"] != nil {
 
-		volAttrs, ok = config["attributes"].(map[string]string)
-		if !ok {
-			err := errors.New(fmt.Sprintf("type assertion on VolumeAttributes: not map[string]string, but %T", config["attributes"]))
-			logger.Error("bind-config", err)
+		attributesJSON, err := json.Marshal(config["attributes"])
+		if err != nil {
+			logger.Error("marshal-attributes", err, lager.Data{"attributes": config["attributes"]})
+			return volman.MountResponse{}, err
+		}
+
+		err = json.Unmarshal(attributesJSON, &volAttrs)
+		if err != nil {
+			logger.Error("unmarshal-attributes", err, lager.Data{"attributes": config["attributes"]})
 			return volman.MountResponse{}, err
 		}
 	}
@@ -121,7 +128,7 @@ func (dw *nodeWrapper) Mount(logger lager.Logger, volumeId string, config map[st
 				Mount: &csi.VolumeCapability_MountVolume{},
 			},
 			AccessMode: &csi.VolumeCapability_AccessMode{
-				csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER,
+				Mode: csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER,
 			},
 		},
 		VolumeAttributes: volAttrs,

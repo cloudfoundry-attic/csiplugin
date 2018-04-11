@@ -54,7 +54,7 @@ var _ = Describe("CsiPluginNode", func() {
 		csiPlugin = csiplugin.NewCsiPlugin(fakeNodeClient, fakePluginSpec, fakeGrpc, fakeCsi, fakeOs, volumesRootDir)
 		conn = new(grpc_fake.FakeClientConn)
 		fakeGrpc.DialReturns(conn, nil)
-		config = map[string]interface{}{"id": "fakevolumeid", "attributes": map[string]string{"foo": "bar"}}
+		config = map[string]interface{}{"id": "fakevolumeid", "attributes": map[string]interface{}{"foo": "bar"}}
 	})
 
 	Describe("#Mount", func() {
@@ -103,12 +103,12 @@ var _ = Describe("CsiPluginNode", func() {
 
 		Context("when attributes from the bind config is the wrong type", func() {
 			BeforeEach(func() {
-				config = map[string]interface{}{"id": "abcd", "attributes": map[string]int{}}
+				config = map[string]interface{}{"id": "abcd", "attributes": map[string]int{"test": 1}}
 			})
 
 			It("should fail with a type assertion error", func() {
 				Expect(err).To(HaveOccurred())
-				Expect(err.Error()).To(Equal("type assertion on VolumeAttributes: not map[string]string, but map[string]int"))
+				Expect(err.Error()).To(Equal("json: cannot unmarshal number into Go value of type string"))
 			})
 		})
 
