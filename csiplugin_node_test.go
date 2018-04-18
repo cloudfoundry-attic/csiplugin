@@ -3,6 +3,7 @@ package csiplugin_test
 import (
 	"fmt"
 	"math/rand"
+	"path"
 	"sync"
 	"time"
 
@@ -11,6 +12,7 @@ import (
 	"code.cloudfoundry.org/goshims/grpcshim/grpc_fake"
 	"code.cloudfoundry.org/goshims/osshim/os_fake"
 	"code.cloudfoundry.org/lager/lagertest"
+	"code.cloudfoundry.org/voldriver/voldriverfakes"
 	"code.cloudfoundry.org/volman"
 	"github.com/container-storage-interface/spec/lib/go/csi/v0"
 	. "github.com/onsi/ginkgo"
@@ -35,7 +37,10 @@ var _ = Describe("CsiPluginNode", func() {
 		fakeOs         *os_fake.FakeOs
 		mountResponse  volman.MountResponse
 		volumesRootDir string
+		mountPath      string
+		tmpPath        string
 		config         map[string]interface{}
+		fakeInvoker    *voldriverfakes.FakeInvoker
 	)
 
 	BeforeEach(func() {
@@ -51,7 +56,10 @@ var _ = Describe("CsiPluginNode", func() {
 		fakeOs = &os_fake.FakeOs{}
 		fakeCsi.NewNodeClientReturns(fakeNodeClient)
 		volumesRootDir = "/var/vcap/data/mount"
-		csiPlugin = csiplugin.NewCsiPlugin(fakeNodeClient, fakePluginSpec, fakeGrpc, fakeCsi, fakeOs, volumesRootDir)
+		mountPath = path.Join(volumesRootDir, "mounts", "fakecsi")
+		tmpPath = path.Join(volumesRootDir, "tmp", "fakecsi")
+		fakeInvoker = &voldriverfakes.FakeInvoker{}
+		csiPlugin = csiplugin.NewCsiPluginWithInvoker(fakeInvoker, fakeNodeClient, fakePluginSpec, fakeGrpc, fakeCsi, fakeOs, volumesRootDir)
 		conn = new(grpc_fake.FakeClientConn)
 		fakeGrpc.DialReturns(conn, nil)
 		config = map[string]interface{}{"id": "fakevolumeid", "attributes": map[string]interface{}{"foo": "bar"}}
@@ -59,7 +67,7 @@ var _ = Describe("CsiPluginNode", func() {
 
 	Describe("#Mount", func() {
 		JustBeforeEach(func() {
-			mountResponse, err = csiPlugin.Mount(logger, "irrelevant-id", config)
+			mountResponse, err = csiPlugin.Mount(logger, "fakevolumeid", config)
 		})
 
 		BeforeEach(func() {
@@ -121,9 +129,56 @@ var _ = Describe("CsiPluginNode", func() {
 				Expect(err).ToNot(HaveOccurred())
 			})
 		})
+
+		Context("when uid/gid is configured", func() {
+			BeforeEach(func() {
+				config = map[string]interface{}{"id": "fakevolumeid", "attributes": nil, "binding-params": map[string]interface{}{"uid": "1000", "gid": "1001"}}
+			})
+
+			It("should use mapfs to mount it", func() {
+				_, request, _ := fakeNodeClient.NodePublishVolumeArgsForCall(0)
+				Expect(request.GetVolumeId()).To(Equal("fakevolumeid"))
+				Expect(request.GetTargetPath()).To(Equal(path.Join(tmpPath, "fakevolumeid")))
+				Expect(request.GetVolumeCapability().GetAccessType()).ToNot(BeNil())
+				Expect(request.GetVolumeCapability().GetAccessMode().GetMode()).To(Equal(csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER))
+
+				_, cmd, args := fakeInvoker.InvokeArgsForCall(0)
+				Expect(cmd).To(Equal("mapfs"))
+				Expect(args).To(ContainElement("-uid"))
+				Expect(args).To(ContainElement("1000"))
+				Expect(args).To(ContainElement("-gid"))
+				Expect(args).To(ContainElement("1001"))
+				Expect(args).To(ContainElement(path.Join(mountPath, "fakevolumeid")))
+				Expect(args).To(ContainElement(path.Join(tmpPath, "fakevolumeid")))
+			})
+
+		})
 	})
 
 	Describe("#Unmount", func() {
+		Context("when using uid/gid mapping", func() {
+			BeforeEach(func() {
+				config = map[string]interface{}{"id": "fakevolumeid", "binding-params": map[string]interface{}{"uid": "1000", "gid": "1001"}}
+				_, err = csiPlugin.Mount(logger, "fakevolumeid", config)
+				Expect(err).NotTo(HaveOccurred())
+				fakeNodeClient.NodePublishVolumeReturns(&csi.NodePublishVolumeResponse{}, nil)
+			})
+
+			JustBeforeEach(func() {
+				err = csiPlugin.Unmount(logger, "fakevolumeid")
+			})
+
+			It("should umount mapfs first", func() {
+				_, cmd, args := fakeInvoker.InvokeArgsForCall(1)
+				Expect(cmd).To(Equal("umount"))
+				Expect(args).To(ContainElement(path.Join(mountPath, "fakevolumeid")))
+				_, request, _ := fakeNodeClient.NodeUnpublishVolumeArgsForCall(0)
+				Expect(request.GetVolumeId()).To(Equal("fakevolumeid"))
+				Expect(request.GetTargetPath()).To(Equal(path.Join(tmpPath, "fakevolumeid")))
+			})
+
+		})
+
 		Context("when volume id doesn't have a csi volume attached", func() {
 			JustBeforeEach(func() {
 				err = csiPlugin.Unmount(logger, "relevant-id")
@@ -177,6 +232,7 @@ var _ = Describe("CsiPluginNode", func() {
 				})
 			})
 		})
+
 	})
 
 	Describe("#ListVolumes", func() {

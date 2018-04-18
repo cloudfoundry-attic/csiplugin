@@ -16,13 +16,16 @@ import (
 	"code.cloudfoundry.org/goshims/grpcshim"
 	"code.cloudfoundry.org/goshims/osshim"
 	"code.cloudfoundry.org/lager"
+	"code.cloudfoundry.org/voldriver/driverhttp"
+	"code.cloudfoundry.org/voldriver/invoker"
 	"code.cloudfoundry.org/volman"
 	"github.com/container-storage-interface/spec/lib/go/csi/v0"
 )
 
 type volumeInfo struct {
-	csiVolumeId string
-	count       int
+	csiVolumeId  string
+	count        int
+	mapfsMounted bool
 }
 
 type nodeWrapper struct {
@@ -34,6 +37,7 @@ type nodeWrapper struct {
 	volumes         map[string]*volumeInfo
 	volumesMutex    sync.RWMutex
 	csiMountRootDir string
+	invoker         invoker.Invoker
 }
 
 func (dw *nodeWrapper) Unmount(logger lager.Logger, volumeId string) error {
@@ -52,8 +56,10 @@ func (dw *nodeWrapper) Unmount(logger lager.Logger, volumeId string) error {
 	dw.volumesMutex.Lock()
 	defer dw.volumesMutex.Unlock()
 
-	mountPath := path.Join(dw.csiMountRootDir, dw.Spec.Name)
-	targetPath := path.Join(mountPath, volumeId)
+	mountPath := path.Join(dw.csiMountRootDir, "mounts", dw.Spec.Name)
+	tmpPath := path.Join(dw.csiMountRootDir, "tmp", dw.Spec.Name)
+
+	var targetPath string
 
 	if volInfo, ok := dw.volumes[volumeId]; ok {
 		csiVolumeId = volInfo.csiVolumeId
@@ -61,6 +67,19 @@ func (dw *nodeWrapper) Unmount(logger lager.Logger, volumeId string) error {
 		if count > 1 {
 			volInfo.count = volInfo.count - 1
 		} else {
+
+			if volInfo.mapfsMounted {
+				targetPath = path.Join(tmpPath, volumeId)
+				ctx := context.TODO()
+				env := driverhttp.NewHttpDriverEnv(logger, ctx)
+				_, err := dw.invoker.Invoke(env, "umount", []string{path.Join(mountPath, volumeId)})
+				if err != nil {
+					logger.Error("invoke-unmount-failed", err)
+					return err
+				}
+			} else {
+				targetPath = path.Join(mountPath, volumeId)
+			}
 			nodeResponse, err := nodePlugin.NodeUnpublishVolume(context.TODO(), &csi.NodeUnpublishVolumeRequest{
 				VolumeId:   csiVolumeId,
 				TargetPath: targetPath,
@@ -92,9 +111,8 @@ func (dw *nodeWrapper) Mount(logger lager.Logger, volumeId string, config map[st
 		return volman.MountResponse{}, err
 	}
 
-	mountPath := path.Join(dw.csiMountRootDir, dw.Spec.Name)
-
-	targetPath := path.Join(mountPath, volumeId)
+	mountPath := path.Join(dw.csiMountRootDir, "mounts", dw.Spec.Name)
+	tmpPath := path.Join(dw.csiMountRootDir, "tmp", dw.Spec.Name)
 
 	nodePlugin := dw.csiShim.NewNodeClient(conn)
 	publishRequestVolID, ok := config["id"].(string)
@@ -120,6 +138,13 @@ func (dw *nodeWrapper) Mount(logger lager.Logger, volumeId string, config map[st
 		}
 	}
 
+	var targetPath string
+	if config["binding-params"] != nil {
+		targetPath = path.Join(tmpPath, volumeId)
+	} else {
+		targetPath = path.Join(mountPath, volumeId)
+	}
+
 	nodeResponse, err := nodePlugin.NodePublishVolume(context.TODO(), &csi.NodePublishVolumeRequest{
 		VolumeId:   publishRequestVolID,
 		TargetPath: targetPath,
@@ -133,6 +158,22 @@ func (dw *nodeWrapper) Mount(logger lager.Logger, volumeId string, config map[st
 		},
 		VolumeAttributes: volAttrs,
 	})
+
+	var uid, gid string
+
+	if config["binding-params"] != nil {
+		ctx := context.TODO()
+		env := driverhttp.NewHttpDriverEnv(logger, ctx)
+		uid = config["binding-params"].(map[string]interface{})["uid"].(string)
+		gid = config["binding-params"].(map[string]interface{})["gid"].(string)
+		mountPoint := path.Join(mountPath, volumeId)
+		original := path.Join(tmpPath, volumeId)
+		_, err := dw.invoker.Invoke(env, "mapfs", []string{"-uid", uid, "-gid", gid, mountPoint, original})
+		if err != nil {
+			logger.Error("invoke-mount-failed", err)
+			return volman.MountResponse{}, err
+		}
+	}
 
 	logger.Debug("node-response", lager.Data{"nodeResponse": nodeResponse})
 
@@ -152,6 +193,11 @@ func (dw *nodeWrapper) Mount(logger lager.Logger, volumeId string, config map[st
 			csiVolumeId: publishRequestVolID,
 			count:       1,
 		}
+	}
+
+	if config["binding-params"] != nil {
+		volInfo, _ := dw.volumes[volumeId]
+		volInfo.mapfsMounted = true
 	}
 
 	return volman.MountResponse{Path: targetPath}, nil
@@ -193,5 +239,19 @@ func NewCsiPlugin(plugin csi.NodeClient, pluginSpec volman.PluginSpec, grpcShim 
 		osShim:          osShim,
 		volumes:         map[string]*volumeInfo{},
 		csiMountRootDir: csiMountRootDir,
+		invoker:         invoker.NewRealInvoker(),
+	}
+}
+
+func NewCsiPluginWithInvoker(invoker invoker.Invoker, plugin csi.NodeClient, pluginSpec volman.PluginSpec, grpcShim grpcshim.Grpc, csiShim csishim.Csi, osShim osshim.Os, csiMountRootDir string) volman.Plugin {
+	return &nodeWrapper{
+		Impl:            plugin,
+		Spec:            pluginSpec,
+		grpcShim:        grpcShim,
+		csiShim:         csiShim,
+		osShim:          osShim,
+		volumes:         map[string]*volumeInfo{},
+		csiMountRootDir: csiMountRootDir,
+		invoker:         invoker,
 	}
 }
