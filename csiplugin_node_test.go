@@ -3,11 +3,14 @@ package csiplugin_test
 import (
 	"fmt"
 	"math/rand"
+	"os"
 	"path"
 	"sync"
 	"time"
 
 	"code.cloudfoundry.org/csiplugin"
+	"code.cloudfoundry.org/csiplugin/csipluginfakes"
+	"code.cloudfoundry.org/csiplugin/oshelper"
 	"code.cloudfoundry.org/csishim/csi_fake"
 	"code.cloudfoundry.org/goshims/grpcshim/grpc_fake"
 	"code.cloudfoundry.org/goshims/osshim/os_fake"
@@ -41,6 +44,7 @@ var _ = Describe("CsiPluginNode", func() {
 		tmpPath        string
 		config         map[string]interface{}
 		fakeInvoker    *voldriverfakes.FakeInvoker
+		fakeBgInvoker  *csipluginfakes.FakeBackgroundInvoker
 	)
 
 	BeforeEach(func() {
@@ -59,7 +63,8 @@ var _ = Describe("CsiPluginNode", func() {
 		mountPath = path.Join(volumesRootDir, "mounts", "fakecsi")
 		tmpPath = path.Join(volumesRootDir, "tmp", "fakecsi")
 		fakeInvoker = &voldriverfakes.FakeInvoker{}
-		csiPlugin = csiplugin.NewCsiPluginWithInvoker(fakeInvoker, fakeNodeClient, fakePluginSpec, fakeGrpc, fakeCsi, fakeOs, volumesRootDir)
+		fakeBgInvoker = &csipluginfakes.FakeBackgroundInvoker{}
+		csiPlugin = csiplugin.NewCsiPluginWithInvoker(fakeInvoker, fakeBgInvoker, fakeNodeClient, fakePluginSpec, fakeGrpc, fakeCsi, fakeOs, volumesRootDir, oshelper.NewOsHelper())
 		conn = new(grpc_fake.FakeClientConn)
 		fakeGrpc.DialReturns(conn, nil)
 		config = map[string]interface{}{"id": "fakevolumeid", "attributes": map[string]interface{}{"foo": "bar"}}
@@ -80,6 +85,17 @@ var _ = Describe("CsiPluginNode", func() {
 			Expect(request.GetVolumeCapability().GetAccessType()).ToNot(BeNil())
 			Expect(request.GetVolumeCapability().GetAccessMode().GetMode()).To(Equal(csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER))
 			Expect(request.GetVolumeAttributes()).To(Equal(map[string]string{"foo": "bar"}))
+		})
+
+		Context("when the mount path doesn't exist", func() {
+			BeforeEach(func() {
+				fakeOs.StatReturns(nil, os.ErrNotExist)
+			})
+
+			It("should prepare the mount path", func() {
+				mkdirpath, _ := fakeOs.MkdirAllArgsForCall(0)
+				Expect(mkdirpath).To(Equal(path.Join(mountPath, "fakevolumeid")))
+			})
 		})
 
 		Context("When csi node server response some error", func() {
@@ -135,6 +151,19 @@ var _ = Describe("CsiPluginNode", func() {
 				config = map[string]interface{}{"id": "fakevolumeid", "attributes": nil, "binding-params": map[string]interface{}{"uid": "1000", "gid": "1001"}}
 			})
 
+			Context("when the mount path doesn't exist", func() {
+				BeforeEach(func() {
+					fakeOs.StatReturns(nil, os.ErrNotExist)
+				})
+
+				It("should prepare the tmp path and the mount path", func() {
+					mkdirpath, _ := fakeOs.MkdirAllArgsForCall(0)
+					Expect(mkdirpath).To(Equal(path.Join(tmpPath, "fakevolumeid")))
+					mkdirpath, _ = fakeOs.MkdirAllArgsForCall(1)
+					Expect(mkdirpath).To(Equal(path.Join(mountPath, "fakevolumeid")))
+				})
+			})
+
 			It("should use mapfs to mount it", func() {
 				_, request, _ := fakeNodeClient.NodePublishVolumeArgsForCall(0)
 				Expect(request.GetVolumeId()).To(Equal("fakevolumeid"))
@@ -142,7 +171,7 @@ var _ = Describe("CsiPluginNode", func() {
 				Expect(request.GetVolumeCapability().GetAccessType()).ToNot(BeNil())
 				Expect(request.GetVolumeCapability().GetAccessMode().GetMode()).To(Equal(csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER))
 
-				_, cmd, args := fakeInvoker.InvokeArgsForCall(0)
+				_, cmd, args, _, _ := fakeBgInvoker.InvokeArgsForCall(0)
 				Expect(cmd).To(Equal("mapfs"))
 				Expect(args).To(ContainElement("-uid"))
 				Expect(args).To(ContainElement("1000"))
@@ -169,7 +198,7 @@ var _ = Describe("CsiPluginNode", func() {
 			})
 
 			It("should umount mapfs first", func() {
-				_, cmd, args := fakeInvoker.InvokeArgsForCall(1)
+				_, cmd, args := fakeInvoker.InvokeArgsForCall(0)
 				Expect(cmd).To(Equal("umount"))
 				Expect(args).To(ContainElement(path.Join(mountPath, "fakevolumeid")))
 				_, request, _ := fakeNodeClient.NodeUnpublishVolumeArgsForCall(0)

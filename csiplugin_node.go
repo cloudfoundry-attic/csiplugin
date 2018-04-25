@@ -4,15 +4,18 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"path"
 	"reflect"
 	"sync"
+	"time"
 
 	"golang.org/x/net/context"
 
 	"google.golang.org/grpc"
 
 	"code.cloudfoundry.org/csishim"
+	"code.cloudfoundry.org/goshims/execshim"
 	"code.cloudfoundry.org/goshims/grpcshim"
 	"code.cloudfoundry.org/goshims/osshim"
 	"code.cloudfoundry.org/lager"
@@ -21,6 +24,12 @@ import (
 	"code.cloudfoundry.org/volman"
 	"github.com/container-storage-interface/spec/lib/go/csi/v0"
 )
+
+const MAPFS_MOUNT_TIMEOUT = time.Minute * 5
+
+type OsHelper interface {
+	Umask(mask int) (oldmask int)
+}
 
 type volumeInfo struct {
 	csiVolumeId  string
@@ -38,6 +47,8 @@ type nodeWrapper struct {
 	volumesMutex    sync.RWMutex
 	csiMountRootDir string
 	invoker         invoker.Invoker
+	bgInvoker       BackgroundInvoker
+	osHelper        OsHelper
 }
 
 func (dw *nodeWrapper) Unmount(logger lager.Logger, volumeId string) error {
@@ -145,6 +156,12 @@ func (dw *nodeWrapper) Mount(logger lager.Logger, volumeId string, config map[st
 		targetPath = path.Join(mountPath, volumeId)
 	}
 
+	err = dw.createDirifNotExist(targetPath)
+	if err != nil {
+		logger.Error("mkdir-path-failed", err)
+		return volman.MountResponse{}, err
+	}
+
 	nodeResponse, err := nodePlugin.NodePublishVolume(context.TODO(), &csi.NodePublishVolumeRequest{
 		VolumeId:   publishRequestVolID,
 		TargetPath: targetPath,
@@ -168,9 +185,16 @@ func (dw *nodeWrapper) Mount(logger lager.Logger, volumeId string, config map[st
 		gid = config["binding-params"].(map[string]interface{})["gid"].(string)
 		mountPoint := path.Join(mountPath, volumeId)
 		original := path.Join(tmpPath, volumeId)
-		_, err := dw.invoker.Invoke(env, "mapfs", []string{"-uid", uid, "-gid", gid, mountPoint, original})
+
+		err = dw.createDirifNotExist(mountPoint)
 		if err != nil {
-			logger.Error("invoke-mount-failed", err)
+			logger.Error("mkdir-path-failed", err)
+			return volman.MountResponse{}, err
+		}
+
+		err := dw.bgInvoker.Invoke(env, "mapfs", []string{"-uid", uid, "-gid", gid, mountPoint, original}, "Mounted!", MAPFS_MOUNT_TIMEOUT)
+		if err != nil {
+			logger.Error("background-invoke-mount-failed", err)
 			return volman.MountResponse{}, err
 		}
 	}
@@ -230,7 +254,19 @@ func (dw *nodeWrapper) Matches(logger lager.Logger, otherSpec volman.PluginSpec)
 	return matches
 }
 
-func NewCsiPlugin(plugin csi.NodeClient, pluginSpec volman.PluginSpec, grpcShim grpcshim.Grpc, csiShim csishim.Csi, osShim osshim.Os, csiMountRootDir string) volman.Plugin {
+func (dw *nodeWrapper) createDirifNotExist(path string) error {
+	if _, err := dw.osShim.Stat(path); os.IsNotExist(err) {
+		orig := dw.osHelper.Umask(000)
+		defer dw.osHelper.Umask(orig)
+		err := dw.osShim.MkdirAll(path, os.ModePerm)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func NewCsiPlugin(plugin csi.NodeClient, pluginSpec volman.PluginSpec, grpcShim grpcshim.Grpc, csiShim csishim.Csi, osShim osshim.Os, csiMountRootDir string, oshelper OsHelper) volman.Plugin {
 	return &nodeWrapper{
 		Impl:            plugin,
 		Spec:            pluginSpec,
@@ -240,10 +276,12 @@ func NewCsiPlugin(plugin csi.NodeClient, pluginSpec volman.PluginSpec, grpcShim 
 		volumes:         map[string]*volumeInfo{},
 		csiMountRootDir: csiMountRootDir,
 		invoker:         invoker.NewRealInvoker(),
+		bgInvoker:       NewBackgroundInvoker(&execshim.ExecShim{}),
+		osHelper:        oshelper,
 	}
 }
 
-func NewCsiPluginWithInvoker(invoker invoker.Invoker, plugin csi.NodeClient, pluginSpec volman.PluginSpec, grpcShim grpcshim.Grpc, csiShim csishim.Csi, osShim osshim.Os, csiMountRootDir string) volman.Plugin {
+func NewCsiPluginWithInvoker(invoker invoker.Invoker, bgInvoker BackgroundInvoker, plugin csi.NodeClient, pluginSpec volman.PluginSpec, grpcShim grpcshim.Grpc, csiShim csishim.Csi, osShim osshim.Os, csiMountRootDir string, oshelper OsHelper) volman.Plugin {
 	return &nodeWrapper{
 		Impl:            plugin,
 		Spec:            pluginSpec,
@@ -253,5 +291,7 @@ func NewCsiPluginWithInvoker(invoker invoker.Invoker, plugin csi.NodeClient, plu
 		volumes:         map[string]*volumeInfo{},
 		csiMountRootDir: csiMountRootDir,
 		invoker:         invoker,
+		bgInvoker:       bgInvoker,
+		osHelper:        oshelper,
 	}
 }
