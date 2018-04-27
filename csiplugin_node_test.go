@@ -179,6 +179,8 @@ var _ = Describe("CsiPluginNode", func() {
 				Expect(args).To(ContainElement("1001"))
 				Expect(args).To(ContainElement(path.Join(mountPath, "fakevolumeid")))
 				Expect(args).To(ContainElement(path.Join(tmpPath, "fakevolumeid")))
+				expectedResponse := volman.MountResponse{Path: path.Join(mountPath, "fakevolumeid")}
+				Expect(mountResponse).To(Equal(expectedResponse))
 			})
 
 		})
@@ -199,7 +201,8 @@ var _ = Describe("CsiPluginNode", func() {
 
 			It("should umount mapfs first", func() {
 				_, cmd, args := fakeInvoker.InvokeArgsForCall(0)
-				Expect(cmd).To(Equal("umount"))
+				Expect(cmd).To(Equal("fusermount"))
+				Expect(args).To(ContainElement("-u"))
 				Expect(args).To(ContainElement(path.Join(mountPath, "fakevolumeid")))
 				_, request, _ := fakeNodeClient.NodeUnpublishVolumeArgsForCall(0)
 				Expect(request.GetVolumeId()).To(Equal("fakevolumeid"))

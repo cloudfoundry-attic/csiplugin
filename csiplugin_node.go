@@ -83,7 +83,7 @@ func (dw *nodeWrapper) Unmount(logger lager.Logger, volumeId string) error {
 				targetPath = path.Join(tmpPath, volumeId)
 				ctx := context.TODO()
 				env := driverhttp.NewHttpDriverEnv(logger, ctx)
-				_, err := dw.invoker.Invoke(env, "umount", []string{path.Join(mountPath, volumeId)})
+				_, err := dw.invoker.Invoke(env, "fusermount", []string{"-u", path.Join(mountPath, volumeId)})
 				if err != nil {
 					logger.Error("invoke-unmount-failed", err)
 					return err
@@ -197,6 +197,8 @@ func (dw *nodeWrapper) Mount(logger lager.Logger, volumeId string, config map[st
 			logger.Error("background-invoke-mount-failed", err)
 			return volman.MountResponse{}, err
 		}
+
+		targetPath = mountPoint
 	}
 
 	logger.Debug("node-response", lager.Data{"nodeResponse": nodeResponse})
