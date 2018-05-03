@@ -162,20 +162,39 @@ func (dw *nodeWrapper) Mount(logger lager.Logger, volumeId string, config map[st
 		return volman.MountResponse{}, err
 	}
 
-	nodeResponse, err := nodePlugin.NodePublishVolume(context.TODO(), &csi.NodePublishVolumeRequest{
-		VolumeId:   publishRequestVolID,
-		TargetPath: targetPath,
-		VolumeCapability: &csi.VolumeCapability{
-			AccessType: &csi.VolumeCapability_Mount{
-				Mount: &csi.VolumeCapability_MountVolume{},
-			},
-			AccessMode: &csi.VolumeCapability_AccessMode{
-				Mode: csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER,
-			},
-		},
-		VolumeAttributes: volAttrs,
-	})
+	dw.volumesMutex.Lock()
+	defer dw.volumesMutex.Unlock()
 
+	var do_mount bool
+
+	if volInfo, ok := dw.volumes[volumeId]; ok {
+		if volInfo.count < 1 {
+			do_mount = true
+		} else {
+			do_mount = false
+		}
+	} else {
+		do_mount = true
+	}
+
+	var nodeResponse *csi.NodePublishVolumeResponse
+
+	if do_mount {
+		nodeResponse, err = nodePlugin.NodePublishVolume(context.TODO(), &csi.NodePublishVolumeRequest{
+			VolumeId:   publishRequestVolID,
+			TargetPath: targetPath,
+			VolumeCapability: &csi.VolumeCapability{
+				AccessType: &csi.VolumeCapability_Mount{
+					Mount: &csi.VolumeCapability_MountVolume{},
+				},
+				AccessMode: &csi.VolumeCapability_AccessMode{
+					Mode: csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER,
+				},
+			},
+			VolumeAttributes: volAttrs,
+		})
+
+	}
 	var uid, gid string
 
 	if config["binding-params"] != nil {
@@ -192,10 +211,12 @@ func (dw *nodeWrapper) Mount(logger lager.Logger, volumeId string, config map[st
 			return volman.MountResponse{}, err
 		}
 
-		err := dw.bgInvoker.Invoke(env, "mapfs", []string{"-uid", uid, "-gid", gid, mountPoint, original}, "Mounted!", MAPFS_MOUNT_TIMEOUT)
-		if err != nil {
-			logger.Error("background-invoke-mount-failed", err)
-			return volman.MountResponse{}, err
+		if do_mount {
+			err := dw.bgInvoker.Invoke(env, "mapfs", []string{"-uid", uid, "-gid", gid, mountPoint, original}, "Mounted!", MAPFS_MOUNT_TIMEOUT)
+			if err != nil {
+				logger.Error("background-invoke-mount-failed", err)
+				return volman.MountResponse{}, err
+			}
 		}
 
 		targetPath = mountPoint
@@ -207,9 +228,6 @@ func (dw *nodeWrapper) Mount(logger lager.Logger, volumeId string, config map[st
 		logger.Error("node-response-error", err)
 		return volman.MountResponse{}, err
 	}
-
-	dw.volumesMutex.Lock()
-	defer dw.volumesMutex.Unlock()
 
 	if volInfo, ok := dw.volumes[volumeId]; ok {
 		volInfo.csiVolumeId = publishRequestVolID

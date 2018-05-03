@@ -87,6 +87,16 @@ var _ = Describe("CsiPluginNode", func() {
 			Expect(request.GetVolumeAttributes()).To(Equal(map[string]string{"foo": "bar"}))
 		})
 
+		Context("when doing the same mount for the second time", func() {
+			BeforeEach(func() {
+				mountResponse, err = csiPlugin.Mount(logger, "fakevolumeid", config)
+			})
+
+			It("should only mount once", func() {
+				Expect(fakeNodeClient.NodePublishVolumeCallCount()).To(Equal(1))
+			})
+		})
+
 		Context("when the mount path doesn't exist", func() {
 			BeforeEach(func() {
 				fakeOs.StatReturns(nil, os.ErrNotExist)
@@ -181,6 +191,16 @@ var _ = Describe("CsiPluginNode", func() {
 				Expect(args).To(ContainElement(path.Join(tmpPath, "fakevolumeid")))
 				expectedResponse := volman.MountResponse{Path: path.Join(mountPath, "fakevolumeid")}
 				Expect(mountResponse).To(Equal(expectedResponse))
+			})
+
+			Context("when doing the same mount for the second time", func() {
+				BeforeEach(func() {
+					mountResponse, err = csiPlugin.Mount(logger, "fakevolumeid", config)
+				})
+
+				It("should use mapfs only once", func() {
+					Expect(fakeBgInvoker.InvokeCallCount()).To(Equal(1))
+				})
 			})
 
 		})
