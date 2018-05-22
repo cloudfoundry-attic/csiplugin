@@ -45,6 +45,7 @@ var _ = Describe("CsiPluginNode", func() {
 		config         map[string]interface{}
 		fakeInvoker    *voldriverfakes.FakeInvoker
 		fakeBgInvoker  *csipluginfakes.FakeBackgroundInvoker
+		mapfsPath      string
 	)
 
 	BeforeEach(func() {
@@ -54,6 +55,7 @@ var _ = Describe("CsiPluginNode", func() {
 			TLSConfig: &volman.TLSConfig{},
 		}
 		fakeNodeClient = &csi_fake.FakeNodeClient{}
+		mapfsPath = "/var/vcap/packages/mapfs/bin/mapfs"
 		logger = lagertest.NewTestLogger("csi-plugin-node-test")
 		fakeGrpc = &grpc_fake.FakeGrpc{}
 		fakeCsi = &csi_fake.FakeCsi{}
@@ -64,7 +66,7 @@ var _ = Describe("CsiPluginNode", func() {
 		tmpPath = path.Join(volumesRootDir, "tmp", "fakecsi")
 		fakeInvoker = &voldriverfakes.FakeInvoker{}
 		fakeBgInvoker = &csipluginfakes.FakeBackgroundInvoker{}
-		csiPlugin = csiplugin.NewCsiPluginWithInvoker(fakeInvoker, fakeBgInvoker, fakeNodeClient, fakePluginSpec, fakeGrpc, fakeCsi, fakeOs, volumesRootDir, oshelper.NewOsHelper())
+		csiPlugin = csiplugin.NewCsiPluginWithInvoker(fakeInvoker, fakeBgInvoker, fakeNodeClient, fakePluginSpec, fakeGrpc, fakeCsi, fakeOs, volumesRootDir, oshelper.NewOsHelper(), mapfsPath)
 		conn = new(grpc_fake.FakeClientConn)
 		fakeGrpc.DialReturns(conn, nil)
 		config = map[string]interface{}{"id": "fakevolumeid", "attributes": map[string]interface{}{"foo": "bar"}}
@@ -182,7 +184,7 @@ var _ = Describe("CsiPluginNode", func() {
 				Expect(request.GetVolumeCapability().GetAccessMode().GetMode()).To(Equal(csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER))
 
 				_, cmd, args, _, _ := fakeBgInvoker.InvokeArgsForCall(0)
-				Expect(cmd).To(Equal("mapfs"))
+				Expect(cmd).To(Equal(mapfsPath))
 				Expect(args).To(ContainElement("-uid"))
 				Expect(args).To(ContainElement("1000"))
 				Expect(args).To(ContainElement("-gid"))

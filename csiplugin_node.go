@@ -49,6 +49,7 @@ type nodeWrapper struct {
 	invoker         invoker.Invoker
 	bgInvoker       BackgroundInvoker
 	osHelper        OsHelper
+	mapfsPath       string
 }
 
 func (dw *nodeWrapper) Unmount(logger lager.Logger, volumeId string) error {
@@ -212,7 +213,7 @@ func (dw *nodeWrapper) Mount(logger lager.Logger, volumeId string, config map[st
 		}
 
 		if do_mount {
-			err := dw.bgInvoker.Invoke(env, "mapfs", []string{"-uid", uid, "-gid", gid, mountPoint, original}, "Mounted!", MAPFS_MOUNT_TIMEOUT)
+			err := dw.bgInvoker.Invoke(env, dw.mapfsPath, []string{"-uid", uid, "-gid", gid, mountPoint, original}, "Mounted!", MAPFS_MOUNT_TIMEOUT)
 			if err != nil {
 				logger.Error("background-invoke-mount-failed", err)
 				return volman.MountResponse{}, err
@@ -286,7 +287,7 @@ func (dw *nodeWrapper) createDirifNotExist(path string) error {
 	return nil
 }
 
-func NewCsiPlugin(plugin csi.NodeClient, pluginSpec volman.PluginSpec, grpcShim grpcshim.Grpc, csiShim csishim.Csi, osShim osshim.Os, csiMountRootDir string, oshelper OsHelper) volman.Plugin {
+func NewCsiPlugin(plugin csi.NodeClient, pluginSpec volman.PluginSpec, grpcShim grpcshim.Grpc, csiShim csishim.Csi, osShim osshim.Os, csiMountRootDir string, oshelper OsHelper, mapfsPath string) volman.Plugin {
 	return &nodeWrapper{
 		Impl:            plugin,
 		Spec:            pluginSpec,
@@ -298,10 +299,11 @@ func NewCsiPlugin(plugin csi.NodeClient, pluginSpec volman.PluginSpec, grpcShim 
 		invoker:         invoker.NewRealInvoker(),
 		bgInvoker:       NewBackgroundInvoker(&execshim.ExecShim{}),
 		osHelper:        oshelper,
+		mapfsPath:       mapfsPath,
 	}
 }
 
-func NewCsiPluginWithInvoker(invoker invoker.Invoker, bgInvoker BackgroundInvoker, plugin csi.NodeClient, pluginSpec volman.PluginSpec, grpcShim grpcshim.Grpc, csiShim csishim.Csi, osShim osshim.Os, csiMountRootDir string, oshelper OsHelper) volman.Plugin {
+func NewCsiPluginWithInvoker(invoker invoker.Invoker, bgInvoker BackgroundInvoker, plugin csi.NodeClient, pluginSpec volman.PluginSpec, grpcShim grpcshim.Grpc, csiShim csishim.Csi, osShim osshim.Os, csiMountRootDir string, oshelper OsHelper, mapfsPath string) volman.Plugin {
 	return &nodeWrapper{
 		Impl:            plugin,
 		Spec:            pluginSpec,
@@ -313,5 +315,6 @@ func NewCsiPluginWithInvoker(invoker invoker.Invoker, bgInvoker BackgroundInvoke
 		invoker:         invoker,
 		bgInvoker:       bgInvoker,
 		osHelper:        oshelper,
+		mapfsPath:       mapfsPath,
 	}
 }
