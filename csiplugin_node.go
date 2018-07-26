@@ -179,6 +179,7 @@ func (dw *nodeWrapper) Mount(logger lager.Logger, volumeId string, config map[st
 	}
 
 	var nodeResponse *csi.NodePublishVolumeResponse
+	var success bool
 
 	if do_mount {
 		nodeResponse, err = nodePlugin.NodePublishVolume(context.TODO(), &csi.NodePublishVolumeRequest{
@@ -194,6 +195,19 @@ func (dw *nodeWrapper) Mount(logger lager.Logger, volumeId string, config map[st
 			},
 			VolumeAttributes: volAttrs,
 		})
+		defer func() {
+			if !success {
+				nodeResponse, err := nodePlugin.NodeUnpublishVolume(context.TODO(), &csi.NodeUnpublishVolumeRequest{
+					VolumeId:   publishRequestVolID,
+					TargetPath: targetPath,
+				})
+				if err != nil {
+					logger.Error("failed-to-cleanup-original-mount", err)
+					return
+				}
+				logger.Debug("unmounted-original-volume", lager.Data{"nodeResponse": nodeResponse})
+			}
+		}()
 
 	}
 	var uid, gid string
@@ -245,6 +259,7 @@ func (dw *nodeWrapper) Mount(logger lager.Logger, volumeId string, config map[st
 		volInfo.mapfsMounted = true
 	}
 
+	success = true
 	return volman.MountResponse{Path: targetPath}, nil
 }
 

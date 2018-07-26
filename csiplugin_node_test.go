@@ -1,6 +1,7 @@
 package csiplugin_test
 
 import (
+	"errors"
 	"fmt"
 	"math/rand"
 	"os"
@@ -135,6 +136,7 @@ var _ = Describe("CsiPluginNode", func() {
 				Expect(err).To(HaveOccurred())
 				Expect(err.Error()).To(Equal("type assertion on VolumeId: not string, but int"))
 			})
+
 		})
 
 		Context("when attributes from the bind config is the wrong type", func() {
@@ -195,6 +197,28 @@ var _ = Describe("CsiPluginNode", func() {
 				Expect(mountResponse).To(Equal(expectedResponse))
 			})
 
+			Context("when mounting with mapfs succeeds", func() {
+				BeforeEach(func() {
+					fakeBgInvoker.InvokeReturns(nil)
+				})
+
+				It("does not clean up original mount", func() {
+					Expect(fakeNodeClient.NodeUnpublishVolumeCallCount()).To(Equal(0))
+				})
+			})
+
+			Context("when failing to mount with mapfs", func() {
+				BeforeEach(func() {
+					fakeBgInvoker.InvokeReturns(errors.New("failed-to-mount"))
+				})
+
+				It("should clean up original mount", func() {
+					_, request, _ := fakeNodeClient.NodeUnpublishVolumeArgsForCall(0)
+					Expect(request.GetVolumeId()).To(Equal("fakevolumeid"))
+					Expect(request.GetTargetPath()).To(Equal("/var/vcap/data/mount/tmp/fakecsi/fakevolumeid"))
+				})
+			})
+
 			Context("when doing the same mount for the second time", func() {
 				BeforeEach(func() {
 					mountResponse, err = csiPlugin.Mount(logger, "fakevolumeid", config)
@@ -204,7 +228,6 @@ var _ = Describe("CsiPluginNode", func() {
 					Expect(fakeBgInvoker.InvokeCallCount()).To(Equal(1))
 				})
 			})
-
 		})
 	})
 
