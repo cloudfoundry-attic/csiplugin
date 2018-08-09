@@ -1,7 +1,6 @@
 package csiplugin_test
 
 import (
-	"errors"
 	"fmt"
 	"math/rand"
 	"os"
@@ -46,7 +45,6 @@ var _ = Describe("CsiPluginNode", func() {
 		config         map[string]interface{}
 		fakeInvoker    *voldriverfakes.FakeInvoker
 		fakeBgInvoker  *csipluginfakes.FakeBackgroundInvoker
-		mapfsPath      string
 	)
 
 	BeforeEach(func() {
@@ -56,7 +54,6 @@ var _ = Describe("CsiPluginNode", func() {
 			TLSConfig: &volman.TLSConfig{},
 		}
 		fakeNodeClient = &csi_fake.FakeNodeClient{}
-		mapfsPath = "/var/vcap/packages/mapfs/bin/mapfs"
 		logger = lagertest.NewTestLogger("csi-plugin-node-test")
 		fakeGrpc = &grpc_fake.FakeGrpc{}
 		fakeCsi = &csi_fake.FakeCsi{}
@@ -67,7 +64,7 @@ var _ = Describe("CsiPluginNode", func() {
 		tmpPath = path.Join(volumesRootDir, "tmp", "fakecsi")
 		fakeInvoker = &voldriverfakes.FakeInvoker{}
 		fakeBgInvoker = &csipluginfakes.FakeBackgroundInvoker{}
-		csiPlugin = csiplugin.NewCsiPluginWithInvoker(fakeInvoker, fakeBgInvoker, fakeNodeClient, fakePluginSpec, fakeGrpc, fakeCsi, fakeOs, volumesRootDir, oshelper.NewOsHelper(), mapfsPath)
+		csiPlugin = csiplugin.NewCsiPluginWithInvoker(fakeInvoker, fakeBgInvoker, fakeNodeClient, fakePluginSpec, fakeGrpc, fakeCsi, fakeOs, volumesRootDir, oshelper.NewOsHelper())
 		conn = new(grpc_fake.FakeClientConn)
 		fakeGrpc.DialReturns(conn, nil)
 		config = map[string]interface{}{"id": "fakevolumeid", "attributes": map[string]interface{}{"foo": "bar"}}
@@ -159,103 +156,9 @@ var _ = Describe("CsiPluginNode", func() {
 				Expect(err).ToNot(HaveOccurred())
 			})
 		})
-
-		Context("when uid/gid is configured", func() {
-			BeforeEach(func() {
-				config = map[string]interface{}{"id": "fakevolumeid", "attributes": nil, "binding-params": map[string]interface{}{"uid": "1000", "gid": "1001"}}
-			})
-
-			Context("when the mount path doesn't exist", func() {
-				BeforeEach(func() {
-					fakeOs.StatReturns(nil, os.ErrNotExist)
-				})
-
-				It("should prepare the tmp path and the mount path", func() {
-					mkdirpath, _ := fakeOs.MkdirAllArgsForCall(0)
-					Expect(mkdirpath).To(Equal(path.Join(tmpPath, "fakevolumeid")))
-					mkdirpath, _ = fakeOs.MkdirAllArgsForCall(1)
-					Expect(mkdirpath).To(Equal(path.Join(mountPath, "fakevolumeid")))
-				})
-			})
-
-			It("should use mapfs to mount it", func() {
-				_, request, _ := fakeNodeClient.NodePublishVolumeArgsForCall(0)
-				Expect(request.GetVolumeId()).To(Equal("fakevolumeid"))
-				Expect(request.GetTargetPath()).To(Equal(path.Join(tmpPath, "fakevolumeid")))
-				Expect(request.GetVolumeCapability().GetAccessType()).ToNot(BeNil())
-				Expect(request.GetVolumeCapability().GetAccessMode().GetMode()).To(Equal(csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER))
-
-				_, cmd, args, _, _ := fakeBgInvoker.InvokeArgsForCall(0)
-				Expect(cmd).To(Equal(mapfsPath))
-				Expect(args).To(ContainElement("-uid"))
-				Expect(args).To(ContainElement("1000"))
-				Expect(args).To(ContainElement("-gid"))
-				Expect(args).To(ContainElement("1001"))
-				Expect(args).To(ContainElement(path.Join(mountPath, "fakevolumeid")))
-				Expect(args).To(ContainElement(path.Join(tmpPath, "fakevolumeid")))
-				expectedResponse := volman.MountResponse{Path: path.Join(mountPath, "fakevolumeid")}
-				Expect(mountResponse).To(Equal(expectedResponse))
-			})
-
-			Context("when mounting with mapfs succeeds", func() {
-				BeforeEach(func() {
-					fakeBgInvoker.InvokeReturns(nil)
-				})
-
-				It("does not clean up original mount", func() {
-					Expect(fakeNodeClient.NodeUnpublishVolumeCallCount()).To(Equal(0))
-				})
-			})
-
-			Context("when failing to mount with mapfs", func() {
-				BeforeEach(func() {
-					fakeBgInvoker.InvokeReturns(errors.New("failed-to-mount"))
-				})
-
-				It("should clean up original mount", func() {
-					_, request, _ := fakeNodeClient.NodeUnpublishVolumeArgsForCall(0)
-					Expect(request.GetVolumeId()).To(Equal("fakevolumeid"))
-					Expect(request.GetTargetPath()).To(Equal("/var/vcap/data/mount/tmp/fakecsi/fakevolumeid"))
-				})
-			})
-
-			Context("when doing the same mount for the second time", func() {
-				BeforeEach(func() {
-					mountResponse, err = csiPlugin.Mount(logger, "fakevolumeid", config)
-				})
-
-				It("should use mapfs only once", func() {
-					Expect(fakeBgInvoker.InvokeCallCount()).To(Equal(1))
-				})
-			})
-		})
 	})
 
 	Describe("#Unmount", func() {
-		Context("when using uid/gid mapping", func() {
-			BeforeEach(func() {
-				config = map[string]interface{}{"id": "fakevolumeid", "binding-params": map[string]interface{}{"uid": "1000", "gid": "1001"}}
-				_, err = csiPlugin.Mount(logger, "fakevolumeid", config)
-				Expect(err).NotTo(HaveOccurred())
-				fakeNodeClient.NodePublishVolumeReturns(&csi.NodePublishVolumeResponse{}, nil)
-			})
-
-			JustBeforeEach(func() {
-				err = csiPlugin.Unmount(logger, "fakevolumeid")
-			})
-
-			It("should umount mapfs first", func() {
-				_, cmd, args := fakeInvoker.InvokeArgsForCall(0)
-				Expect(cmd).To(Equal("fusermount"))
-				Expect(args).To(ContainElement("-u"))
-				Expect(args).To(ContainElement(path.Join(mountPath, "fakevolumeid")))
-				_, request, _ := fakeNodeClient.NodeUnpublishVolumeArgsForCall(0)
-				Expect(request.GetVolumeId()).To(Equal("fakevolumeid"))
-				Expect(request.GetTargetPath()).To(Equal(path.Join(tmpPath, "fakevolumeid")))
-			})
-
-		})
-
 		Context("when volume id doesn't have a csi volume attached", func() {
 			JustBeforeEach(func() {
 				err = csiPlugin.Unmount(logger, "relevant-id")

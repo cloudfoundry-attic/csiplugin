@@ -19,7 +19,6 @@ import (
 	"code.cloudfoundry.org/goshims/grpcshim"
 	"code.cloudfoundry.org/goshims/osshim"
 	"code.cloudfoundry.org/lager"
-	"code.cloudfoundry.org/voldriver/driverhttp"
 	"code.cloudfoundry.org/voldriver/invoker"
 	"code.cloudfoundry.org/volman"
 	"github.com/container-storage-interface/spec/lib/go/csi/v0"
@@ -32,9 +31,8 @@ type OsHelper interface {
 }
 
 type volumeInfo struct {
-	csiVolumeId  string
-	count        int
-	mapfsMounted bool
+	csiVolumeId string
+	count       int
 }
 
 type nodeWrapper struct {
@@ -49,7 +47,6 @@ type nodeWrapper struct {
 	invoker         invoker.Invoker
 	bgInvoker       BackgroundInvoker
 	osHelper        OsHelper
-	mapfsPath       string
 }
 
 func (dw *nodeWrapper) Unmount(logger lager.Logger, volumeId string) error {
@@ -69,7 +66,6 @@ func (dw *nodeWrapper) Unmount(logger lager.Logger, volumeId string) error {
 	defer dw.volumesMutex.Unlock()
 
 	mountPath := path.Join(dw.csiMountRootDir, "mounts", dw.Spec.Name)
-	tmpPath := path.Join(dw.csiMountRootDir, "tmp", dw.Spec.Name)
 
 	var targetPath string
 
@@ -79,19 +75,7 @@ func (dw *nodeWrapper) Unmount(logger lager.Logger, volumeId string) error {
 		if count > 1 {
 			volInfo.count = volInfo.count - 1
 		} else {
-
-			if volInfo.mapfsMounted {
-				targetPath = path.Join(tmpPath, volumeId)
-				ctx := context.TODO()
-				env := driverhttp.NewHttpDriverEnv(logger, ctx)
-				_, err := dw.invoker.Invoke(env, "fusermount", []string{"-u", path.Join(mountPath, volumeId)})
-				if err != nil {
-					logger.Error("invoke-unmount-failed", err)
-					return err
-				}
-			} else {
-				targetPath = path.Join(mountPath, volumeId)
-			}
+			targetPath = path.Join(mountPath, volumeId)
 			nodeResponse, err := nodePlugin.NodeUnpublishVolume(context.TODO(), &csi.NodeUnpublishVolumeRequest{
 				VolumeId:   csiVolumeId,
 				TargetPath: targetPath,
@@ -210,32 +194,6 @@ func (dw *nodeWrapper) Mount(logger lager.Logger, volumeId string, config map[st
 		}()
 
 	}
-	var uid, gid string
-
-	if config["binding-params"] != nil {
-		ctx := context.TODO()
-		env := driverhttp.NewHttpDriverEnv(logger, ctx)
-		uid = config["binding-params"].(map[string]interface{})["uid"].(string)
-		gid = config["binding-params"].(map[string]interface{})["gid"].(string)
-		mountPoint := path.Join(mountPath, volumeId)
-		original := path.Join(tmpPath, volumeId)
-
-		err = dw.createDirifNotExist(mountPoint)
-		if err != nil {
-			logger.Error("mkdir-path-failed", err)
-			return volman.MountResponse{}, err
-		}
-
-		if do_mount {
-			err := dw.bgInvoker.Invoke(env, dw.mapfsPath, []string{"-uid", uid, "-gid", gid, mountPoint, original}, "Mounted!", MAPFS_MOUNT_TIMEOUT)
-			if err != nil {
-				logger.Error("background-invoke-mount-failed", err)
-				return volman.MountResponse{}, err
-			}
-		}
-
-		targetPath = mountPoint
-	}
 
 	logger.Debug("node-response", lager.Data{"nodeResponse": nodeResponse})
 
@@ -252,11 +210,6 @@ func (dw *nodeWrapper) Mount(logger lager.Logger, volumeId string, config map[st
 			csiVolumeId: publishRequestVolID,
 			count:       1,
 		}
-	}
-
-	if config["binding-params"] != nil {
-		volInfo, _ := dw.volumes[volumeId]
-		volInfo.mapfsMounted = true
 	}
 
 	success = true
@@ -302,7 +255,7 @@ func (dw *nodeWrapper) createDirifNotExist(path string) error {
 	return nil
 }
 
-func NewCsiPlugin(plugin csi.NodeClient, pluginSpec volman.PluginSpec, grpcShim grpcshim.Grpc, csiShim csishim.Csi, osShim osshim.Os, csiMountRootDir string, oshelper OsHelper, mapfsPath string) volman.Plugin {
+func NewCsiPlugin(plugin csi.NodeClient, pluginSpec volman.PluginSpec, grpcShim grpcshim.Grpc, csiShim csishim.Csi, osShim osshim.Os, csiMountRootDir string, oshelper OsHelper) volman.Plugin {
 	return &nodeWrapper{
 		Impl:            plugin,
 		Spec:            pluginSpec,
@@ -314,11 +267,10 @@ func NewCsiPlugin(plugin csi.NodeClient, pluginSpec volman.PluginSpec, grpcShim 
 		invoker:         invoker.NewRealInvoker(),
 		bgInvoker:       NewBackgroundInvoker(&execshim.ExecShim{}),
 		osHelper:        oshelper,
-		mapfsPath:       mapfsPath,
 	}
 }
 
-func NewCsiPluginWithInvoker(invoker invoker.Invoker, bgInvoker BackgroundInvoker, plugin csi.NodeClient, pluginSpec volman.PluginSpec, grpcShim grpcshim.Grpc, csiShim csishim.Csi, osShim osshim.Os, csiMountRootDir string, oshelper OsHelper, mapfsPath string) volman.Plugin {
+func NewCsiPluginWithInvoker(invoker invoker.Invoker, bgInvoker BackgroundInvoker, plugin csi.NodeClient, pluginSpec volman.PluginSpec, grpcShim grpcshim.Grpc, csiShim csishim.Csi, osShim osshim.Os, csiMountRootDir string, oshelper OsHelper) volman.Plugin {
 	return &nodeWrapper{
 		Impl:            plugin,
 		Spec:            pluginSpec,
@@ -330,6 +282,5 @@ func NewCsiPluginWithInvoker(invoker invoker.Invoker, bgInvoker BackgroundInvoke
 		invoker:         invoker,
 		bgInvoker:       bgInvoker,
 		osHelper:        oshelper,
-		mapfsPath:       mapfsPath,
 	}
 }
