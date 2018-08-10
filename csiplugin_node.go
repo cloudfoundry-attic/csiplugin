@@ -8,7 +8,6 @@ import (
 	"path"
 	"reflect"
 	"sync"
-	"time"
 
 	"golang.org/x/net/context"
 
@@ -23,8 +22,6 @@ import (
 	"code.cloudfoundry.org/volman"
 	"github.com/container-storage-interface/spec/lib/go/csi/v0"
 )
-
-const MAPFS_MOUNT_TIMEOUT = time.Minute * 5
 
 type OsHelper interface {
 	Umask(mask int) (oldmask int)
