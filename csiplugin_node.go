@@ -240,6 +240,10 @@ func (dw *nodeWrapper) Matches(logger lager.Logger, otherSpec volman.PluginSpec)
 	return matches
 }
 
+func (dw *nodeWrapper) GetPluginSpec() volman.PluginSpec {
+	return volman.PluginSpec{}
+}
+
 func (dw *nodeWrapper) createDirifNotExist(path string) error {
 	if _, err := dw.osShim.Stat(path); os.IsNotExist(err) {
 		orig := dw.osHelper.Umask(000)
