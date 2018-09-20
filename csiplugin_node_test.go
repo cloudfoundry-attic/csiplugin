@@ -41,7 +41,6 @@ var _ = Describe("CsiPluginNode", func() {
 		mountResponse  volman.MountResponse
 		volumesRootDir string
 		mountPath      string
-		tmpPath        string
 		config         map[string]interface{}
 		fakeInvoker    *voldriverfakes.FakeInvoker
 		fakeBgInvoker  *csipluginfakes.FakeBackgroundInvoker
@@ -61,7 +60,6 @@ var _ = Describe("CsiPluginNode", func() {
 		fakeCsi.NewNodeClientReturns(fakeNodeClient)
 		volumesRootDir = "/var/vcap/data/mount"
 		mountPath = path.Join(volumesRootDir, "mounts", "fakecsi")
-		tmpPath = path.Join(volumesRootDir, "tmp", "fakecsi")
 		fakeInvoker = &voldriverfakes.FakeInvoker{}
 		fakeBgInvoker = &csipluginfakes.FakeBackgroundInvoker{}
 		csiPlugin = csiplugin.NewCsiPluginWithInvoker(fakeInvoker, fakeBgInvoker, fakeNodeClient, fakePluginSpec, fakeGrpc, fakeCsi, fakeOs, volumesRootDir, oshelper.NewOsHelper())
