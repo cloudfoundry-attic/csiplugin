@@ -8,15 +8,15 @@ import (
 	"sync"
 	"time"
 
+	"code.cloudfoundry.org/dockerdriver"
 	"code.cloudfoundry.org/goshims/execshim"
 	"code.cloudfoundry.org/lager"
-	"code.cloudfoundry.org/voldriver"
 )
 
 //go:generate counterfeiter -o csipluginfakes/fake_background_invoker.go . BackgroundInvoker
 
 type BackgroundInvoker interface {
-	Invoke(env voldriver.Env, executable string, cmdArgs []string, waitFor string, timeout time.Duration) error
+	Invoke(env dockerdriver.Env, executable string, cmdArgs []string, waitFor string, timeout time.Duration) error
 }
 
 type backgroundInvoker struct {
@@ -27,7 +27,7 @@ func NewBackgroundInvoker(useExec execshim.Exec) BackgroundInvoker {
 	return &backgroundInvoker{useExec}
 }
 
-func (r *backgroundInvoker) Invoke(env voldriver.Env, executable string, cmdArgs []string, waitFor string, timeout time.Duration) error {
+func (r *backgroundInvoker) Invoke(env dockerdriver.Env, executable string, cmdArgs []string, waitFor string, timeout time.Duration) error {
 	logger := env.Logger().Session("invoking-command", lager.Data{"executable": executable, "args": cmdArgs})
 	logger.Info("start")
 	defer logger.Info("end")

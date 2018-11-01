@@ -12,10 +12,10 @@ import (
 	"code.cloudfoundry.org/csiplugin/csipluginfakes"
 	"code.cloudfoundry.org/csiplugin/oshelper"
 	"code.cloudfoundry.org/csishim/csi_fake"
+	"code.cloudfoundry.org/dockerdriver/dockerdriverfakes"
 	"code.cloudfoundry.org/goshims/grpcshim/grpc_fake"
 	"code.cloudfoundry.org/goshims/osshim/os_fake"
 	"code.cloudfoundry.org/lager/lagertest"
-	"code.cloudfoundry.org/voldriver/voldriverfakes"
 	"code.cloudfoundry.org/volman"
 	"github.com/container-storage-interface/spec/lib/go/csi/v0"
 	. "github.com/onsi/ginkgo"
@@ -42,7 +42,7 @@ var _ = Describe("CsiPluginNode", func() {
 		volumesRootDir string
 		mountPath      string
 		config         map[string]interface{}
-		fakeInvoker    *voldriverfakes.FakeInvoker
+		fakeInvoker    *dockerdriverfakes.FakeInvoker
 		fakeBgInvoker  *csipluginfakes.FakeBackgroundInvoker
 	)
 
@@ -60,7 +60,7 @@ var _ = Describe("CsiPluginNode", func() {
 		fakeCsi.NewNodeClientReturns(fakeNodeClient)
 		volumesRootDir = "/var/vcap/data/mount"
 		mountPath = path.Join(volumesRootDir, "mounts", "fakecsi")
-		fakeInvoker = &voldriverfakes.FakeInvoker{}
+		fakeInvoker = &dockerdriverfakes.FakeInvoker{}
 		fakeBgInvoker = &csipluginfakes.FakeBackgroundInvoker{}
 		csiPlugin = csiplugin.NewCsiPluginWithInvoker(fakeInvoker, fakeBgInvoker, fakeNodeClient, fakePluginSpec, fakeGrpc, fakeCsi, fakeOs, volumesRootDir, oshelper.NewOsHelper())
 		conn = new(grpc_fake.FakeClientConn)
