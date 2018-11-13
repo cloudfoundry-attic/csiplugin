@@ -20,7 +20,7 @@ import (
 	"code.cloudfoundry.org/goshims/osshim"
 	"code.cloudfoundry.org/lager"
 	"code.cloudfoundry.org/volman"
-	"github.com/container-storage-interface/spec/lib/go/csi/v0"
+	"github.com/container-storage-interface/spec/lib/go/csi"
 )
 
 type OsHelper interface {
@@ -174,7 +174,7 @@ func (dw *nodeWrapper) Mount(logger lager.Logger, volumeId string, config map[st
 					Mode: csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER,
 				},
 			},
-			VolumeAttributes: volAttrs,
+			VolumeContext: volAttrs,
 		})
 		defer func() {
 			if !success {

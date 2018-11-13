@@ -17,7 +17,7 @@ import (
 	"code.cloudfoundry.org/goshims/osshim/os_fake"
 	"code.cloudfoundry.org/lager/lagertest"
 	"code.cloudfoundry.org/volman"
-	"github.com/container-storage-interface/spec/lib/go/csi/v0"
+	"github.com/container-storage-interface/spec/lib/go/csi"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	"github.com/onsi/gomega/gbytes"
@@ -82,7 +82,7 @@ var _ = Describe("CsiPluginNode", func() {
 			Expect(request.GetVolumeId()).To(Equal("fakevolumeid"))
 			Expect(request.GetVolumeCapability().GetAccessType()).ToNot(BeNil())
 			Expect(request.GetVolumeCapability().GetAccessMode().GetMode()).To(Equal(csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER))
-			Expect(request.GetVolumeAttributes()).To(Equal(map[string]string{"foo": "bar"}))
+			Expect(request.GetVolumeContext()).To(Equal(map[string]string{"foo": "bar"}))
 		})
 
 		Context("when doing the same mount for the second time", func() {
